@@ -3,42 +3,88 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="A fast, friendly programming quiz powered by a local WSL backend.">
     <title>GDBGC Quiz</title>
-    <style>
-      :root {
-        color-scheme: dark;
-        font-family: system-ui, sans-serif;
-        background: #0d1117;
-        color: #f0f6fc;
-      }
-
-      body {
-        display: grid;
-        min-height: 100vh;
-        margin: 0;
-        place-items: center;
-      }
-
-      main {
-        width: min(90%, 42rem);
-        padding: 3rem;
-        border: 1px solid #30363d;
-        border-radius: 1rem;
-        background: #161b22;
-        text-align: center;
-        box-shadow: 0 1rem 3rem rgb(0 0 0 / 30%);
-      }
-
-      h1 {
-        margin-top: 0;
-        color: #58a6ff;
-      }
-    </style>
+    <link rel="stylesheet" href="styles.css">
+    <script src="app.js" defer></script>
   </head>
   <body>
-    <main>
-      <h1>GDBGC Quiz</h1>
-      <p>The quiz is coming soon.</p>
-    </main>
+    <div class="page-shell">
+      <header class="site-header">
+        <a class="brand" href="./" aria-label="GDBGC Quiz home">
+          <span class="brand-mark">G</span>
+          <span>GDBGC Quiz</span>
+        </a>
+        <div id="connection-status" class="status status-loading" role="status">
+          <span class="status-dot"></span>
+          <span>Connecting</span>
+        </div>
+      </header>
+
+      <main>
+        <section id="loading-view" class="card hero-card" aria-live="polite">
+          <p class="eyebrow">Live from WSL</p>
+          <h1>Warming up the quiz.</h1>
+          <p class="lede">Finding the local quiz engine through GitHub Pages…</p>
+          <div class="loader" aria-hidden="true"></div>
+        </section>
+
+        <section id="offline-view" class="card hero-card hidden" aria-live="polite">
+          <p class="eyebrow">Backend offline</p>
+          <h1>The quiz engine is taking a break.</h1>
+          <p id="offline-message" class="lede">Start the WSL service, then try again.</p>
+          <button id="retry-button" class="button button-primary" type="button">Reconnect</button>
+        </section>
+
+        <section id="start-view" class="card hero-card hidden">
+          <p class="eyebrow">Five questions · One leaderboard</p>
+          <h1 id="quiz-title">How sharp are your dev instincts?</h1>
+          <p id="quiz-description" class="lede">Test the fundamentals, get instant explanations, and claim a place on the board.</p>
+          <label class="name-field">
+            <span>Your leaderboard name</span>
+            <input id="player-name" type="text" maxlength="24" autocomplete="nickname" placeholder="Quiz wizard">
+          </label>
+          <button id="start-button" class="button button-primary" type="button">Start the quiz</button>
+        </section>
+
+        <section id="quiz-view" class="card quiz-card hidden">
+          <div class="quiz-meta">
+            <span id="question-count">Question 1 of 5</span>
+            <span id="score-preview">0 answered</span>
+          </div>
+          <div class="progress-track" aria-hidden="true"><span id="progress-bar"></span></div>
+          <p id="question-category" class="eyebrow"></p>
+          <h2 id="question-text"></h2>
+          <div id="answer-list" class="answer-list" role="group" aria-label="Answer choices"></div>
+          <button id="next-button" class="button button-primary" type="button" disabled>Next question</button>
+        </section>
+
+        <section id="result-view" class="hidden">
+          <div class="card result-card">
+            <p class="eyebrow">Quiz complete</p>
+            <div id="score-ring" class="score-ring"><strong id="score-value">0/5</strong></div>
+            <h1 id="result-heading">Nicely done.</h1>
+            <p id="result-copy" class="lede"></p>
+            <button id="again-button" class="button button-primary" type="button">Play again</button>
+          </div>
+          <div class="results-grid">
+            <section class="card">
+              <h2>Answer review</h2>
+              <div id="review-list" class="review-list"></div>
+            </section>
+            <section class="card">
+              <h2>Leaderboard</h2>
+              <ol id="leaderboard" class="leaderboard"></ol>
+            </section>
+          </div>
+        </section>
+      </main>
+
+      <footer>
+        <span>Frontend on GitHub Pages</span>
+        <span aria-hidden="true">·</span>
+        <span>Scoring in WSL</span>
+      </footer>
+    </div>
   </body>
 </html>
