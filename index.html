@@ -66,6 +66,15 @@
             <div id="question-media" class="question-media"></div>
           </section>
 
+          <nav class="game-info-tabs" aria-label="Информация за играта">
+            <button type="button" data-player-panel="points" aria-pressed="false">🏆 <span>Точки</span></button>
+            <button type="button" data-player-panel="bets" aria-pressed="false">🎲 <span>Залози</span></button>
+            <button type="button" data-player-panel="teams" aria-pressed="false">👥 <span>Отбори</span></button>
+            <button id="captain-answer-tab" class="hidden" type="button" data-player-panel="answer" aria-pressed="false">✍️ <span>Отговор</span></button>
+            <button id="suggestions-tab" class="hidden" type="button" data-player-panel="suggestions" aria-pressed="false">💬 <span id="suggestions-tab-label">Предложи</span><b id="suggestions-count" class="notification-badge hidden">0</b></button>
+          </nav>
+          <section id="team-grid" class="team-grid hidden" aria-label="Информация за играта"></section>
+
           <section id="stage-card" class="card stage-card" aria-live="polite">
             <p id="stage-kicker" class="eyebrow"></p>
             <h2 id="stage-title"></h2>
@@ -88,12 +97,6 @@
             </section>
           </div>
 
-          <nav class="game-info-tabs" aria-label="Информация за играта">
-            <button type="button" data-player-panel="points" aria-pressed="false">🏆 <span>Точки</span></button>
-            <button type="button" data-player-panel="bets" aria-pressed="false">🎲 <span>Залози</span></button>
-            <button type="button" data-player-panel="teams" aria-pressed="false">👥 <span>Отбори</span></button>
-          </nav>
-          <section id="team-grid" class="team-grid hidden" aria-label="Информация за играта"></section>
           <nav id="category-strip" class="category-strip" aria-label="Категории"></nav>
         </div>
       </main>

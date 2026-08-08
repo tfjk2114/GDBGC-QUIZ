@@ -74,6 +74,8 @@ def default_game(teams=None, game_mode="full"):
         "pendingBets": {},
         "bets": {},
         "results": {},
+        "teamAnswers": {},
+        "suggestions": {},
         "teams": teams or default_teams(),
     }
 
@@ -97,6 +99,8 @@ def load_game():
         if game.get("schemaVersion") != 5 or len(game.get("teams", [])) != 4:
             raise ValueError("Невалидна версия на играта")
         game.setdefault("gameMode", "full")
+        game.setdefault("teamAnswers", {})
+        game.setdefault("suggestions", {})
         return game
     except (FileNotFoundError, json.JSONDecodeError, ValueError):
         game = default_game()
@@ -273,6 +277,7 @@ def host_game():
     view["bets"] = GAME["bets"]
     view["pendingBets"] = GAME["pendingBets"]
     view["results"] = GAME["results"]
+    view["teamAnswers"] = GAME["teamAnswers"]
     view["questionBank"] = question_bank_for_host()
     if view.get("question"):
         view["question"]["answer"] = question_for_player(current_question())["answer"]
@@ -289,8 +294,16 @@ def clean_label(value, fallback, maximum=32):
     return cleaned[:maximum] or fallback
 
 
+def clean_text(value, maximum):
+    cleaned = " ".join(str(value or "").split())
+    cleaned = "".join(character for character in cleaned if character.isprintable()).strip()
+    if not cleaned:
+        raise ValueError("Текстът не може да бъде празен")
+    return cleaned[:maximum]
+
+
 class QuizHandler(BaseHTTPRequestHandler):
-    server_version = "GDBGCQuiz/9.0"
+    server_version = "GDBGCQuiz/10.0"
 
     def log_message(self, message, *args):
         print(f"{self.address_string()} - {message % args}", flush=True)
@@ -342,7 +355,7 @@ class QuizHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/health":
-            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 9, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
+            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 10, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
         elif path == "/api/game":
             with LOCK:
                 self.send_json(200, public_game())
@@ -354,16 +367,26 @@ class QuizHandler(BaseHTTPRequestHandler):
                 else:
                     team_index, player_index = identity
                     team = GAME["teams"][team_index]
-                    self.send_json(200, {
+                    is_captain = GAME["captains"].get(team["id"]) == player_index
+                    status = {
                         "name": team["players"][player_index],
                         "teamId": team["id"],
                         "teamName": team["name"],
                         "playerIndex": player_index,
-                        "isCaptain": GAME["captains"].get(team["id"]) == player_index,
+                        "isCaptain": is_captain,
                         "isAnswerer": answerer_for(team) is not None and answerer_for(team)["playerIndex"] == player_index,
                         "usedWagers": team["usedWagers"],
                         "pendingBet": GAME["pendingBets"].get(team["id"]),
-                    })
+                    }
+                    if is_captain:
+                        status["teamAnswer"] = GAME["teamAnswers"].get(team["id"], "")
+                        status["suggestions"] = GAME["suggestions"].get(team["id"], [])
+                    else:
+                        status["ownSuggestions"] = [
+                            suggestion for suggestion in GAME["suggestions"].get(team["id"], [])
+                            if suggestion.get("playerIndex") == player_index
+                        ]
+                    self.send_json(200, status)
         elif path == "/api/host/state":
             if self.require_host():
                 with LOCK:
@@ -375,14 +398,18 @@ class QuizHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         try:
             payload = self.read_json()
-            if path in {"/api/players/join", "/api/players/leave", "/api/captain/wager"}:
+            if path in {"/api/players/join", "/api/players/leave", "/api/captain/wager", "/api/captain/answer", "/api/player/suggestion"}:
                 with LOCK:
                     if path == "/api/players/join":
                         response = self.join_player(payload)
                     elif path == "/api/players/leave":
                         response = self.leave_player()
-                    else:
+                    elif path == "/api/captain/wager":
                         response = self.submit_captain_wager(payload)
+                    elif path == "/api/captain/answer":
+                        response = self.submit_captain_answer(payload)
+                    else:
+                        response = self.submit_player_suggestion(payload)
                     save_game()
                     self.send_json(200, response)
                 return
@@ -494,6 +521,43 @@ class QuizHandler(BaseHTTPRequestHandler):
             "game": public_game(),
         }
 
+    def submit_captain_answer(self, payload):
+        if GAME["phase"] != "question":
+            raise ValueError("Отговор може да се изпрати само докато въпросът е отворен")
+        identity = find_player_by_token(self.player_token())
+        if not identity:
+            raise ValueError("Сесията на играча не е валидна")
+        team_index, player_index = identity
+        team = GAME["teams"][team_index]
+        if team not in active_teams() or GAME["captains"].get(team["id"]) != player_index:
+            raise ValueError("Само капитанът може да изпрати отговора на отбора")
+        answer = clean_text(payload.get("answer"), 500)
+        GAME["teamAnswers"][team["id"]] = answer
+        return {"answer": answer}
+
+    def submit_player_suggestion(self, payload):
+        if GAME["phase"] != "question":
+            raise ValueError("Предложения се изпращат само докато въпросът е отворен")
+        identity = find_player_by_token(self.player_token())
+        if not identity:
+            raise ValueError("Сесията на играча не е валидна")
+        team_index, player_index = identity
+        team = GAME["teams"][team_index]
+        if team not in active_teams():
+            raise ValueError("Отборът не участва в този режим")
+        if GAME["captains"].get(team["id"]) == player_index:
+            raise ValueError("Капитанът изпраща официалния отговор от менюто Отговор")
+        suggestion = {
+            "id": secrets.token_hex(8),
+            "name": team["players"][player_index],
+            "playerIndex": player_index,
+            "text": clean_text(payload.get("suggestion"), 300),
+        }
+        team_suggestions = GAME["suggestions"].setdefault(team["id"], [])
+        team_suggestions.append(suggestion)
+        del team_suggestions[:-40]
+        return {"suggestion": suggestion}
+
     def update_teams(self, payload):
         teams = payload.get("teams")
         if not isinstance(teams, list) or len(teams) != 4:
@@ -570,6 +634,8 @@ class QuizHandler(BaseHTTPRequestHandler):
         GAME["pendingBets"] = {}
         GAME["bets"] = {}
         GAME["results"] = {}
+        GAME["teamAnswers"] = {}
+        GAME["suggestions"] = {}
 
     def start_test(self):
         if GAME["phase"] not in {"lobby", "test_result"}:
@@ -623,6 +689,8 @@ class QuizHandler(BaseHTTPRequestHandler):
         GAME["pendingBets"] = {}
         GAME["bets"] = {}
         GAME["results"] = {}
+        GAME["teamAnswers"] = {}
+        GAME["suggestions"] = {}
         GAME["phase"] = "betting"
 
     def start_category(self):
@@ -632,6 +700,8 @@ class QuizHandler(BaseHTTPRequestHandler):
         GAME["pendingBets"] = {}
         GAME["bets"] = {}
         GAME["results"] = {}
+        GAME["teamAnswers"] = {}
+        GAME["suggestions"] = {}
         GAME["phase"] = "betting"
 
     def reveal_question(self, payload):
@@ -655,6 +725,8 @@ class QuizHandler(BaseHTTPRequestHandler):
             team["usedWagers"].append(bets[team["id"]])
             team["usedWagers"].sort()
         GAME["results"] = {}
+        GAME["teamAnswers"] = {}
+        GAME["suggestions"] = {}
         GAME["phase"] = "question"
 
     def score_question(self, payload):
@@ -681,6 +753,8 @@ class QuizHandler(BaseHTTPRequestHandler):
         GAME["pendingBets"] = {}
         GAME["bets"] = {}
         GAME["results"] = {}
+        GAME["teamAnswers"] = {}
+        GAME["suggestions"] = {}
         if GAME["currentQuestionIndex"] >= 100:
             GAME["currentQuestionIndex"] = 100
             GAME["phase"] = "finished"

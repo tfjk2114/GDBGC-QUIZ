@@ -90,7 +90,7 @@ async function refresh() {
     state.game = game;
     state.player = player;
     updatePlayerLabel();
-    renderGame();
+    if (!document.activeElement?.matches('input, textarea')) renderGame();
     setConnection('online', 'На живо');
   } catch (error) {
     goOffline(error);
@@ -141,8 +141,24 @@ function renderGame() {
   }
   renderStage(game);
   renderCaptainPanel(game);
+  renderCommunicationTabs(game);
   renderTeams(game);
   if (!pregame) renderCategories(game);
+}
+
+function renderCommunicationTabs(game) {
+  const open = game.phase === 'question';
+  const captain = open && state.player?.isCaptain;
+  const suggestionsTab = element('suggestions-tab');
+  element('captain-answer-tab').classList.toggle('hidden', !captain);
+  suggestionsTab.classList.toggle('hidden', !open);
+  element('suggestions-tab-label').textContent = captain ? 'Съвети' : 'Предложи';
+  const count = captain ? (state.player.suggestions || []).length : 0;
+  element('suggestions-count').textContent = count;
+  element('suggestions-count').classList.toggle('hidden', !count);
+  if ((!open && ['answer', 'suggestions'].includes(state.activePanel)) || (!captain && state.activePanel === 'answer')) {
+    state.activePanel = null;
+  }
 }
 
 function renderCaptainPanel(game) {
@@ -245,9 +261,20 @@ function renderQuestionMedia(container, media) {
 function renderTeams(game) {
   const visibleTeams = activeTeams(game);
   const grid = element('team-grid');
+  grid.classList.toggle('team-chat-open', state.activePanel === 'suggestions');
   document.querySelectorAll('[data-player-panel]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.playerPanel === state.activePanel)));
   grid.classList.toggle('hidden', !state.activePanel);
   if (!state.activePanel) return;
+
+  if (state.activePanel === 'answer') {
+    renderCaptainAnswer(grid);
+    return;
+  }
+
+  if (state.activePanel === 'suggestions') {
+    renderSuggestions(grid);
+    return;
+  }
 
   if (state.activePanel === 'points') {
     const sorted = [...visibleTeams].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, 'bg'));
@@ -324,6 +351,78 @@ function renderTeams(game) {
     return card;
   });
   grid.replaceChildren(...cards);
+}
+
+function communicationCard(title, copy) {
+  const card = document.createElement('article');
+  card.className = 'card communication-card';
+  const heading = document.createElement('h3'); heading.textContent = title;
+  const helper = document.createElement('p'); helper.className = 'communication-help'; helper.textContent = copy;
+  card.append(heading, helper);
+  return card;
+}
+
+function renderCaptainAnswer(grid) {
+  const card = communicationCard('Отговорът на отбора', 'Само ти и водещият виждате официалния отговор. Можеш да го редактираш, докато въпросът е отворен.');
+  const form = document.createElement('form'); form.className = 'communication-form';
+  const textarea = document.createElement('textarea');
+  textarea.maxLength = 500; textarea.rows = 4; textarea.required = true;
+  textarea.placeholder = 'Напиши окончателния отговор…'; textarea.value = state.player.teamAnswer || '';
+  textarea.setAttribute('aria-label', 'Официален отговор на отбора');
+  const button = document.createElement('button'); button.className = 'button button-primary'; button.type = 'submit';
+  button.textContent = state.player.teamAnswer ? 'Обнови отговора' : 'Изпрати отговора';
+  const status = document.createElement('p'); status.className = 'communication-status';
+  status.textContent = state.player.teamAnswer ? 'Отговорът е записан и може да бъде обновен.' : 'Все още няма изпратен отговор.';
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault(); button.disabled = true;
+    try {
+      const response = await request('/api/captain/answer', { method: 'POST', body: JSON.stringify({ answer: textarea.value }) }, true);
+      state.player.teamAnswer = response.answer; renderCaptainAnswer(grid);
+    } catch (error) { status.textContent = error.message; status.classList.add('error'); }
+    finally { button.disabled = false; }
+  });
+  form.append(textarea, button, status); card.append(form); grid.replaceChildren(card);
+}
+
+function renderSuggestions(grid) {
+  if (state.player.isCaptain) {
+    const suggestions = state.player.suggestions || [];
+    const card = communicationCard('Съвети от отбора', 'Тези известия са лични за капитана на твоя отбор.');
+    const list = document.createElement('div'); list.className = 'suggestion-list';
+    if (!suggestions.length) {
+      const empty = document.createElement('p'); empty.className = 'empty-suggestions'; empty.textContent = 'Все още няма предложения.'; list.append(empty);
+    } else {
+      for (const suggestion of [...suggestions].reverse()) {
+        const item = document.createElement('article'); item.className = 'suggestion-notification';
+        const name = document.createElement('strong'); name.textContent = suggestion.name;
+        const text = document.createElement('p'); text.textContent = suggestion.text;
+        item.append(name, text); list.append(item);
+      }
+    }
+    card.append(list); grid.replaceChildren(card); return;
+  }
+
+  const card = communicationCard('Предложи отговор', 'Предложението се изпраща само до капитана на твоя отбор.');
+  const form = document.createElement('form'); form.className = 'communication-form';
+  const textarea = document.createElement('textarea'); textarea.maxLength = 300; textarea.rows = 3; textarea.required = true;
+  textarea.placeholder = 'Напиши идея или възможен отговор…'; textarea.setAttribute('aria-label', 'Предложение към капитана');
+  const button = document.createElement('button'); button.className = 'button button-primary'; button.type = 'submit'; button.textContent = 'Изпрати предложение';
+  const status = document.createElement('p'); status.className = 'communication-status';
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault(); button.disabled = true;
+    try {
+      const response = await request('/api/player/suggestion', { method: 'POST', body: JSON.stringify({ suggestion: textarea.value }) }, true);
+      state.player.ownSuggestions = [...(state.player.ownSuggestions || []), response.suggestion];
+      textarea.value = ''; status.textContent = 'Предложението е изпратено до капитана.'; status.classList.remove('error');
+    } catch (error) { status.textContent = error.message; status.classList.add('error'); }
+    finally { button.disabled = false; }
+  });
+  form.append(textarea, button, status);
+  const sent = document.createElement('div'); sent.className = 'own-suggestions';
+  for (const suggestion of [...(state.player.ownSuggestions || [])].reverse()) {
+    const item = document.createElement('p'); item.textContent = suggestion.text; sent.append(item);
+  }
+  card.append(form, sent); grid.replaceChildren(card);
 }
 
 function renderCategories(game) {

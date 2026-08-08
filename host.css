@@ -27,6 +27,8 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .host-live-answer { display: grid; gap: 5px; padding-left: 18px; border-left: 1px solid var(--line); }
 .host-live-answer span { color: var(--muted); font-size: .65rem; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
 .host-live-answer strong { color: var(--accent); }
+.host-live-answer.is-revealed { padding: 16px 18px; border: 2px solid var(--accent); border-radius: 12px; background: rgba(255,180,84,.14); box-shadow: 0 0 28px rgba(255,180,84,.2); }
+.host-live-answer.is-revealed strong { color: #fff; font-size: 1.1rem; line-height: 1.4; }
 .host-live-answer .answer-concealed { color: var(--muted); font-style: italic; font-weight: 600; }
 .host-question-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 7px; }
 .host-question-actions .button { min-height: 38px; padding: 0 12px; font-size: .72rem; }
@@ -39,6 +41,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .round-team { padding: 16px; border: 1px solid var(--line); border-radius: 13px; background: rgba(8,17,31,.55); }
 .round-team strong { display: block; margin-bottom: 6px; }
 .round-team small { color: var(--muted); }
+.submitted-team-answer { min-height: 46px; margin: 10px 0; padding: 10px; border-left: 3px solid var(--pink); background: rgba(255,114,182,.08); color: var(--text); font-size: .86rem; line-height: 1.4; }
 .round-team .captain-name { color: var(--accent); }
 .team-roles { display: grid; gap: 5px; }
 .question-preview { margin: 20px 0; padding: 22px; border: 1px solid rgba(114,184,255,.3); border-radius: 14px; background: rgba(114,184,255,.08); }

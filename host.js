@@ -141,7 +141,8 @@ function renderHostLiveQuestion(game) {
     renderQuestionMedia(element('host-live-question-media'), []);
     return;
   }
-  const answerRevealed = state.revealedAnswerFor === game.question.number;
+  const questionKey = game.question.id || game.question.number;
+  const answerRevealed = state.revealedAnswerFor === questionKey;
   element('host-live-question-label').textContent = `Question ${game.question.number} · ${game.category.name}`;
   const questionText = element('host-live-question-text');
   questionText.textContent = game.question.prompt || '';
@@ -149,7 +150,9 @@ function renderHostLiveQuestion(game) {
   renderQuestionMedia(element('host-live-question-media'), game.question.media || []);
   element('host-live-answer-text').textContent = answerRevealed ? (game.question.answer || 'Not provided yet') : 'Hidden until revealed';
   element('host-live-answer-text').classList.toggle('answer-concealed', !answerRevealed);
+  element('host-live-answer-text').closest('.host-live-answer').classList.toggle('is-revealed', answerRevealed);
   element('reveal-answer-button').textContent = answerRevealed ? 'Hide answer' : 'Reveal answer';
+  element('reveal-answer-button').setAttribute('aria-pressed', String(answerRevealed));
   const next = element('host-next-question');
   next.disabled = game.phase !== 'results';
   next.textContent = game.questionNumber % 10 === 0 ? 'Finish category' : 'Next question';
@@ -373,7 +376,9 @@ function renderScoring(game, controls) {
     select.innerHTML = '<option value="">Choose verdict…</option><option value="true">Correct</option><option value="false">Incorrect</option>';
     const wrap = document.createElement('div');
     const bet = document.createElement('small'); bet.textContent = `Wager: ${team.bet}`;
-    wrap.append(bet, select); grid.append(teamCard(team, wrap));
+    const submitted = document.createElement('p'); submitted.className = 'submitted-team-answer';
+    submitted.textContent = game.teamAnswers?.[team.id] || 'No submitted answer';
+    wrap.append(bet, submitted, select); grid.append(teamCard(team, wrap));
   }
   const score = actionButton('Score question', async () => {
     const results = {};
@@ -505,8 +510,9 @@ element('browser-reveal').addEventListener('click', () => {
 
 element('reveal-answer-button').addEventListener('click', () => {
   if (!state.game?.question) return;
-  state.revealedAnswerFor = state.revealedAnswerFor === state.game.question.number ? null : state.game.question.number;
-  renderHostLiveQuestion(state.game);
+  const questionKey = state.game.question.id || state.game.question.number;
+  state.revealedAnswerFor = state.revealedAnswerFor === questionKey ? null : questionKey;
+  render();
 });
 
 element('host-next-question').addEventListener('click', async () => {

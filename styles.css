@@ -19,7 +19,7 @@
 html { min-width: 320px; background: var(--bg); }
 body { min-height: 100vh; margin: 0; overflow-x: hidden; background: radial-gradient(circle at 12% 8%, rgba(101, 199, 255, 0.2), transparent 34rem), radial-gradient(circle at 88% 15%, rgba(255, 114, 182, 0.14), transparent 30rem), var(--bg); color: var(--text); }
 body::before { position: fixed; inset: 0; z-index: -1; background-image: linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px); background-size: 48px 48px; content: ""; mask-image: linear-gradient(to bottom, black, transparent 86%); }
-button, input, select { font: inherit; }
+button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 a { color: var(--accent); }
 .text-button { padding: 0; border: 0; background: none; color: var(--muted); font-size: .8rem; }
@@ -65,14 +65,14 @@ h2 { font-size: clamp(1.7rem, 4vw, 2.8rem); }
 .progress-track { height: 7px; margin-bottom: 24px; overflow: hidden; border-radius: 99px; background: rgba(148,163,184,.15); }
 .progress-track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--blue), var(--accent)); transition: width 300ms ease; }
 .stage-card { min-height: 210px; padding: clamp(24px, 4vw, 42px); text-align: center; }
-.question-box { max-width: 850px; margin: 30px auto 0; padding: 24px; border: 2px solid rgba(255,180,84,.38); border-radius: 12px; background: rgba(255,180,84,.08); }
+.question-box { max-width: 1040px; margin: 30px auto 0; padding: clamp(30px, 5vw, 54px); border: 3px solid var(--accent); border-radius: 18px; background: radial-gradient(circle at top right, rgba(255,114,182,.24), transparent 42%), linear-gradient(135deg, rgba(101,199,255,.18), rgba(255,180,84,.14)); box-shadow: 0 0 0 5px rgba(101,199,255,.08), 0 0 38px rgba(255,180,84,.24), var(--shadow); }
 .question-box span { color: var(--accent); font-size: .8rem; font-weight: 900; text-transform: uppercase; }
-.question-box p { margin: 12px 0 0; font-size: clamp(1.25rem, 3vw, 2rem); font-weight: 750; line-height: 1.35; }
+.question-box p { margin: 14px 0 0; color: #fff; font-size: clamp(1.55rem, 4vw, 2.75rem); font-weight: 900; line-height: 1.28; text-shadow: 0 2px 18px rgba(101,199,255,.32); }
 .question-media { display: grid; gap: 10px; justify-items: center; margin-top: 16px; }
 .question-media img { display: block; max-width: 100%; max-height: min(45vh, 480px); border: 1px solid var(--line); border-radius: 10px; object-fit: contain; }
 .question-media audio { width: min(100%, 560px); accent-color: var(--accent); }
 .question-media a { display: inline-flex; min-height: 42px; padding: 9px 14px; align-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-strong); font-weight: 800; }
-.persistent-question { position: sticky; top: 10px; z-index: 15; max-width: none; margin: 0 0 18px; border-color: var(--pink); background: linear-gradient(135deg, rgba(16,47,87,.99), rgba(25,31,70,.99)); box-shadow: 6px 7px 0 rgba(2,10,25,.62), 0 18px 44px rgba(0,0,0,.35); text-align: left; }
+.persistent-question { position: sticky; top: 10px; z-index: 15; max-width: none; margin: 0 0 12px; border-color: var(--accent); background: radial-gradient(circle at 90% 5%, rgba(255,114,182,.34), transparent 38%), linear-gradient(135deg, rgba(13,55,98,.99), rgba(31,27,82,.99)); text-align: left; }
 
 .captain-action { display: flex; justify-content: center; margin-top: 18px; }
 .captain-wager-button { display: flex; gap: 12px; align-items: center; border-color: var(--pink); background: linear-gradient(135deg, var(--accent), var(--pink)); color: #17213a; }
@@ -92,9 +92,26 @@ h2 { font-size: clamp(1.7rem, 4vw, 2.8rem); }
 .wager-number.selected { border-color: var(--pink); background: var(--pink); color: #171d38; box-shadow: 3px 3px 0 rgba(2,10,25,.7); }
 .wager-number.used { cursor: not-allowed; border-color: #34465d; background: #26384d; color: #708196; box-shadow: none; opacity: .72; text-decoration: line-through; }
 
-.game-info-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin: 18px 0; }
+.game-info-tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 9px; margin: 18px 0; }
 .game-info-tabs button { display: flex; gap: 8px; align-items: center; justify-content: center; min-height: 48px; border: 2px solid var(--line); border-radius: 10px; background: #0b2547; color: var(--muted); box-shadow: 3px 3px 0 rgba(2,10,25,.55); font-weight: 850; }
 .game-info-tabs button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: #17213a; }
+.notification-badge { display: grid; min-width: 20px; height: 20px; padding: 0 5px; place-items: center; border-radius: 99px; background: var(--danger); color: #fff; font-size: .68rem; }
+.communication-card { grid-column: 1 / -1; width: min(760px, 100%); margin: 0 auto; padding: clamp(20px, 4vw, 32px); }
+.team-grid.team-chat-open { display: block; margin: -2px 0 18px; }
+.team-chat-open .communication-card { border-top: 4px solid var(--pink); border-radius: 12px 12px 18px 18px; background: linear-gradient(180deg, rgba(13,42,76,.98), rgba(7,25,49,.98)); }
+.communication-card h3 { font-size: 1.35rem; }
+.communication-help, .communication-status, .empty-suggestions { color: var(--muted); line-height: 1.5; }
+.communication-form { display: grid; gap: 11px; margin-top: 18px; }
+.communication-form textarea { width: 100%; min-height: 110px; padding: 13px; resize: vertical; border: 2px solid var(--line); border-radius: 10px; outline: none; background: #071a33; color: var(--text); line-height: 1.45; }
+.communication-form textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255,180,84,.13); }
+.communication-form .button { justify-self: start; }
+.communication-status { min-height: 22px; margin: 0; font-size: .82rem; }
+.communication-status.error { color: var(--danger); }
+.suggestion-list, .own-suggestions { display: grid; gap: 9px; margin-top: 18px; }
+.suggestion-notification { padding: 13px 15px; border: 1px solid var(--line); border-left: 4px solid var(--pink); border-radius: 9px; background: rgba(101,199,255,.07); }
+.suggestion-notification strong { color: var(--blue); font-size: .8rem; }
+.suggestion-notification p, .own-suggestions p { margin: 5px 0 0; line-height: 1.45; }
+.own-suggestions p { padding: 10px 12px; border-left: 3px solid var(--line); background: rgba(101,199,255,.05); color: var(--muted); }
 .info-card { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; padding: 18px; border-left: 4px solid var(--team-color); }
 .info-card strong { font-size: .95rem; }
 .info-card b { color: var(--team-color); text-align: right; }
@@ -145,7 +162,7 @@ footer { display: flex; flex-wrap: wrap; gap: 9px; justify-content: center; min-
   .round-header h1 { font-size: 1.75rem; }
   .question-counter strong { font-size: 1.6rem; }
   .persistent-question { top: 6px; padding: 17px; }
-  .persistent-question p { font-size: 1.15rem; }
+  .persistent-question p { font-size: 1.35rem; }
   .persistent-question .question-media img { max-height: 34vh; }
   .stage-card { min-height: 0; padding: 22px 18px; }
   .stage-card .lede { margin-bottom: 0; font-size: .88rem; }
@@ -154,7 +171,8 @@ footer { display: flex; flex-wrap: wrap; gap: 9px; justify-content: center; min-
   .captain-panel { width: 100%; max-height: 88vh; border-radius: 14px 14px 8px 8px; }
   .captain-number-grid { grid-template-columns: repeat(5, 1fr); gap: 6px; }
   .game-info-tabs { position: sticky; bottom: 8px; z-index: 14; gap: 6px; }
-  .game-info-tabs button { min-height: 46px; padding: 6px; font-size: .75rem; }
+  .game-info-tabs { grid-template-columns: repeat(auto-fit, minmax(76px, 1fr)); }
+  .game-info-tabs button { min-height: 46px; padding: 6px 3px; font-size: .72rem; }
   .category-strip { gap: 5px; overflow-x: auto; justify-content: flex-start; padding-bottom: 5px; }
   .category-strip span { flex: 0 0 29px; width: 29px; height: 29px; }
 }
