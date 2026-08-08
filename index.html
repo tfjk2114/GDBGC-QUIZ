@@ -13,7 +13,7 @@
     <div class="page-shell">
       <header class="site-header">
         <a class="brand" href="./" aria-label="Начало на GDBGC Викторина">
-          <span class="brand-mark">G</span>
+          <span class="brand-mark" aria-hidden="true"></span>
           <span>GDBGC Викторина</span>
         </a>
         <div class="header-side">
@@ -51,7 +51,7 @@
 
         <div id="game-view" class="hidden">
           <section class="round-header">
-            <div>
+            <div class="category-heading">
               <p id="category-kicker" class="eyebrow"></p>
               <h1 id="category-name"></h1>
             </div>
@@ -60,10 +60,29 @@
 
           <div id="game-progress-track" class="progress-track" aria-hidden="true"><span id="game-progress"></span></div>
 
+          <section id="captain-vote-panel" class="card captain-vote-panel hidden" aria-live="polite">
+            <p class="eyebrow">Избор на капитан</p>
+            <h2>Гласувай за капитан</h2>
+            <p class="vote-help">Можеш да гласуваш и за себе си. Играчите, които са били капитани през последните две категории, не участват.</p>
+            <div id="captain-candidate-grid" class="captain-candidate-grid"></div>
+            <p id="captain-vote-status" class="communication-status"></p>
+            <div id="captain-vote-progress" class="captain-vote-progress"></div>
+          </section>
+
           <section id="question-box" class="card question-box persistent-question hidden" aria-live="polite">
             <span id="question-label"></span>
             <p id="question-text"></p>
             <div id="question-media" class="question-media"></div>
+          </section>
+
+          <section id="answer-reveal-panel" class="card answer-reveal-panel hidden" aria-live="polite">
+            <span>Правилен отговор</span>
+            <h2 id="correct-answer-text">Ще бъде разкрит след оценяването.</h2>
+          </section>
+
+          <section id="captain-responses-panel" class="card captain-responses-panel hidden" aria-live="polite">
+            <div><p class="eyebrow">Отговори на отборите</p><h2>Какво изпратиха капитаните</h2></div>
+            <div id="captain-responses-grid" class="captain-responses-grid"></div>
           </section>
 
           <nav class="game-info-tabs" aria-label="Информация за играта">
@@ -74,12 +93,6 @@
             <button id="suggestions-tab" class="hidden" type="button" data-player-panel="suggestions" aria-pressed="false">💬 <span id="suggestions-tab-label">Предложи</span><b id="suggestions-count" class="notification-badge hidden">0</b></button>
           </nav>
           <section id="team-grid" class="team-grid hidden" aria-label="Информация за играта"></section>
-
-          <section id="stage-card" class="card stage-card" aria-live="polite">
-            <p id="stage-kicker" class="eyebrow"></p>
-            <h2 id="stage-title"></h2>
-            <p id="stage-copy" class="lede"></p>
-          </section>
 
           <div id="captain-action" class="captain-action hidden">
             <button id="captain-wager-button" class="button captain-wager-button" type="button"><span aria-hidden="true">🎲</span><span><strong>Избери залог</strong><small id="captain-button-status">Отвори числата</small></span></button>

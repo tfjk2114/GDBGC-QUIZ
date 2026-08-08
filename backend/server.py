@@ -71,6 +71,8 @@ def default_game(teams=None, game_mode="full"):
         "testCompleted": False,
         "test": None,
         "captains": {},
+        "captainHistory": {},
+        "captainVotes": {},
         "pendingBets": {},
         "bets": {},
         "results": {},
@@ -99,6 +101,8 @@ def load_game():
         if game.get("schemaVersion") != 5 or len(game.get("teams", [])) != 4:
             raise ValueError("Невалидна версия на играта")
         game.setdefault("gameMode", "full")
+        game.setdefault("captainHistory", {})
+        game.setdefault("captainVotes", {})
         game.setdefault("teamAnswers", {})
         game.setdefault("suggestions", {})
         return game
@@ -191,14 +195,39 @@ def answerer_for(team):
     return None
 
 
-def draw_captains():
-    captains = {}
+def eligible_captain_indices(team):
+    filled = [index for index, player in enumerate(team["players"]) if player]
+    recent = GAME.get("captainHistory", {}).get(team["id"], [])[-2:]
+    eligible = [index for index in filled if index not in recent]
+    if not eligible and game_mode() == "duo":
+        eligible = [index for index in filled if not recent or index != recent[-1]]
+    return eligible
+
+
+def captain_vote_progress(team):
+    votes = GAME.get("captainVotes", {}).get(team["id"], {})
+    filled = [index for index, player in enumerate(team["players"]) if player]
+    return sum(str(index) in votes for index in filled), len(filled)
+
+
+def finalize_captain_vote_if_ready():
     for team in active_teams():
-        filled = [index for index, player in enumerate(team["players"]) if player]
-        if not filled:
-            raise ValueError(f"{team['name']} has no players")
-        captains[team["id"]] = random.choice(filled)
-    return captains
+        submitted, required = captain_vote_progress(team)
+        if submitted != required:
+            return False
+    captains = {}
+    history = GAME.setdefault("captainHistory", {})
+    for team in active_teams():
+        choices = list(GAME["captainVotes"][team["id"]].values())
+        counts = {candidate: choices.count(candidate) for candidate in set(choices)}
+        highest = max(counts.values())
+        captain = random.choice([candidate for candidate, count in counts.items() if count == highest])
+        captains[team["id"]] = captain
+        history[team["id"]] = (history.get(team["id"], []) + [captain])[-2:]
+    GAME["captains"] = captains
+    GAME["captainVotes"] = {}
+    GAME["phase"] = "betting"
+    return True
 
 
 def player_count():
@@ -224,8 +253,10 @@ def public_game():
     question = question_for_player(current_question())
     phase = GAME["phase"]
     visible_question = None
-    if question and phase in {"question", "results"}:
+    if question and phase == "question":
         visible_question = {key: value for key, value in question.items() if key != "answer"}
+    elif question and phase == "results":
+        visible_question = question
     teams = []
     active_team_ids = {team["id"] for team in active_teams()}
     for team in GAME["teams"]:
@@ -246,8 +277,12 @@ def public_game():
             team_view["hasPendingBet"] = team["id"] in GAME["pendingBets"]
         if phase == "results":
             team_view["correct"] = GAME["results"].get(team["id"])
+        if phase == "captain_vote" and is_active:
+            submitted, required = captain_vote_progress(team)
+            team_view["captainVoteCount"] = submitted
+            team_view["captainVoteRequired"] = required
         teams.append(team_view)
-    return {
+    view = {
         "version": GAME["version"],
         "phase": phase,
         "questionNumber": GAME["currentQuestionIndex"] + 1 if question else 100,
@@ -263,6 +298,11 @@ def public_game():
         "teams": teams,
         "categories": CATEGORIES,
     }
+    if phase == "results":
+        view["teamAnswers"] = {
+            team["id"]: GAME["teamAnswers"].get(team["id"], "") for team in active_teams()
+        }
+    return view
 
 
 def host_game():
@@ -303,7 +343,7 @@ def clean_text(value, maximum):
 
 
 class QuizHandler(BaseHTTPRequestHandler):
-    server_version = "GDBGCQuiz/10.0"
+    server_version = "GDBGCQuiz/11.0"
 
     def log_message(self, message, *args):
         print(f"{self.address_string()} - {message % args}", flush=True)
@@ -355,7 +395,7 @@ class QuizHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/health":
-            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 10, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
+            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 11, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
         elif path == "/api/game":
             with LOCK:
                 self.send_json(200, public_game())
@@ -386,6 +426,13 @@ class QuizHandler(BaseHTTPRequestHandler):
                             suggestion for suggestion in GAME["suggestions"].get(team["id"], [])
                             if suggestion.get("playerIndex") == player_index
                         ]
+                    if GAME["phase"] == "captain_vote" and team in active_teams():
+                        votes = GAME["captainVotes"].get(team["id"], {})
+                        status["captainVote"] = votes.get(str(player_index))
+                        status["captainCandidates"] = [
+                            {"playerIndex": index, "name": team["players"][index]}
+                            for index in eligible_captain_indices(team)
+                        ]
                     self.send_json(200, status)
         elif path == "/api/host/state":
             if self.require_host():
@@ -398,12 +445,14 @@ class QuizHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         try:
             payload = self.read_json()
-            if path in {"/api/players/join", "/api/players/leave", "/api/captain/wager", "/api/captain/answer", "/api/player/suggestion"}:
+            if path in {"/api/players/join", "/api/players/leave", "/api/player/captain-vote", "/api/captain/wager", "/api/captain/answer", "/api/player/suggestion"}:
                 with LOCK:
                     if path == "/api/players/join":
                         response = self.join_player(payload)
                     elif path == "/api/players/leave":
                         response = self.leave_player()
+                    elif path == "/api/player/captain-vote":
+                        response = self.submit_captain_vote(payload)
                     elif path == "/api/captain/wager":
                         response = self.submit_captain_wager(payload)
                     elif path == "/api/captain/answer":
@@ -521,6 +570,23 @@ class QuizHandler(BaseHTTPRequestHandler):
             "game": public_game(),
         }
 
+    def submit_captain_vote(self, payload):
+        if GAME["phase"] != "captain_vote":
+            raise ValueError("В момента няма гласуване за капитан")
+        identity = find_player_by_token(self.player_token())
+        if not identity:
+            raise ValueError("Сесията на играча не е валидна")
+        team_index, player_index = identity
+        team = GAME["teams"][team_index]
+        if team not in active_teams():
+            raise ValueError("Отборът не участва в този режим")
+        candidate = payload.get("playerIndex")
+        if isinstance(candidate, bool) or not isinstance(candidate, int) or candidate not in eligible_captain_indices(team):
+            raise ValueError("Избери играч, който не е бил капитан през последните две категории")
+        GAME["captainVotes"].setdefault(team["id"], {})[str(player_index)] = candidate
+        finalized = finalize_captain_vote_if_ready()
+        return {"vote": candidate, "finalized": finalized, "game": public_game()}
+
     def submit_captain_answer(self, payload):
         if GAME["phase"] != "question":
             raise ValueError("Отговор може да се изпрати само докато въпросът е отворен")
@@ -631,6 +697,7 @@ class QuizHandler(BaseHTTPRequestHandler):
                 GAME["teams"][0]["playerTokens"][player_index] = token
         GAME["gameMode"] = mode
         GAME["captains"] = {}
+        GAME["captainVotes"] = {}
         GAME["pendingBets"] = {}
         GAME["bets"] = {}
         GAME["results"] = {}
@@ -684,25 +751,27 @@ class QuizHandler(BaseHTTPRequestHandler):
         capacity = player_capacity()
         if player_count() != capacity:
             raise ValueError(f"All {capacity} players must join")
-        GAME["captains"] = draw_captains()
+        GAME["captains"] = {}
+        GAME["captainVotes"] = {}
         GAME["test"] = None
         GAME["pendingBets"] = {}
         GAME["bets"] = {}
         GAME["results"] = {}
         GAME["teamAnswers"] = {}
         GAME["suggestions"] = {}
-        GAME["phase"] = "betting"
+        GAME["phase"] = "captain_vote"
 
     def start_category(self):
         if GAME["phase"] not in {"category_start", "setup"}:
             raise ValueError("Finish the current question before starting a new category")
-        GAME["captains"] = draw_captains()
+        GAME["captains"] = {}
+        GAME["captainVotes"] = {}
         GAME["pendingBets"] = {}
         GAME["bets"] = {}
         GAME["results"] = {}
         GAME["teamAnswers"] = {}
         GAME["suggestions"] = {}
-        GAME["phase"] = "betting"
+        GAME["phase"] = "captain_vote"
 
     def reveal_question(self, payload):
         if GAME["phase"] != "betting":
@@ -760,7 +829,8 @@ class QuizHandler(BaseHTTPRequestHandler):
             GAME["phase"] = "finished"
         elif GAME["currentQuestionIndex"] % 10 == 0:
             GAME["captains"] = {}
-            GAME["phase"] = "category_start"
+            GAME["captainVotes"] = {}
+            GAME["phase"] = "captain_vote"
         else:
             GAME["phase"] = "betting"
 

@@ -139,7 +139,8 @@ function renderGame() {
     element('question-number').textContent = game.questionNumber;
     element('game-progress').style.width = `${Math.min(100, game.questionNumber)}%`;
   }
-  renderStage(game);
+  renderQuestionArea(game);
+  renderCaptainVote(game);
   renderCaptainPanel(game);
   renderCommunicationTabs(game);
   renderTeams(game);
@@ -204,7 +205,7 @@ async function submitCaptainWager(wager, button) {
   }
 }
 
-function renderStage(game) {
+function renderQuestionArea(game) {
   const questionBox = element('question-box');
   const test = game.test;
   const visibleQuestion = game.question || (game.phase === 'test_question' || game.phase === 'test_result' ? { number: 'Тест', prompt: test?.prompt } : null);
@@ -219,19 +220,72 @@ function renderStage(game) {
     renderQuestionMedia(element('question-media'), []);
   }
 
-  const copy = {
-    lobby: ['Изчакване', 'Добре дошъл в играта.', `Изчакай водещия. В залата са ${game.playerCount} от ${game.playerCapacity} играчи.`],
-    test_question: ['Проверка на системата', `${test?.playerName}, това е твоят тестов въпрос.`, `Водещият ще отбележи отговора. Тестът не носи точки.`],
-    test_result: ['Проверката приключи', test?.result ? 'Тестът е успешен.' : 'Тестът е отчетен като грешен.', 'Изчакайте водещия да стартира истинската викторина.'],
-    category_start: ['Нова категория', 'Избираме капитани.', 'Водещият ще избере на случаен принцип капитан за всеки отбор.'],
-    betting: ['Време за залог', game.gameMode === 'duo' ? 'Капитанът избира число.' : 'Капитани, изберете число.', game.gameMode === 'duo' ? 'Единственият капитан трябва да заключи неизползван залог преди въпросът да се покаже.' : 'Всеки отбор трябва да заключи неизползван залог от 1 до 100 преди въпросът да се покаже.'],
-    question: ['Въпросът е открит', 'Отбори, заключете отговора си.', 'Водещият ще отбележи кои отбори са отговорили правилно.'],
-    results: ['Точките са обновени', 'Резултатът е ясен.', 'Верните отбори получават залога си. Грешните не получават точки.'],
-    finished: ['Край на играта', 'Това беше последният въпрос.', 'Класирането показва финалните резултати.']
-  }[game.phase] || ['Статус', 'Изчакваме водещия.', ''];
-  element('stage-kicker').textContent = copy[0];
-  element('stage-title').textContent = copy[1];
-  element('stage-copy').textContent = copy[2];
+  const answerPanel = element('answer-reveal-panel');
+  answerPanel.classList.toggle('hidden', !['question', 'results'].includes(game.phase));
+  answerPanel.classList.toggle('answer-is-revealed', game.phase === 'results');
+  element('correct-answer-text').textContent = game.phase === 'results'
+    ? (game.question?.answer || 'Няма предварително зададен отговор.')
+    : 'Ще бъде разкрит след оценяването.';
+
+  const responsesPanel = element('captain-responses-panel');
+  responsesPanel.classList.toggle('hidden', game.phase !== 'results');
+  if (game.phase === 'results') {
+    element('captain-responses-grid').replaceChildren(...activeTeams(game).map((team) => {
+      const response = document.createElement('article');
+      response.className = `captain-response ${team.correct ? 'is-correct' : 'is-wrong'}`;
+      const heading = document.createElement('div');
+      const name = document.createElement('strong'); name.textContent = bgTeamName(team.name);
+      const verdict = document.createElement('span'); verdict.textContent = team.correct ? 'Вярно' : 'Грешно';
+      const answer = document.createElement('p'); answer.textContent = game.teamAnswers?.[team.id] || 'Няма изпратен отговор';
+      heading.append(name, verdict); response.append(heading, answer); return response;
+    }));
+  }
+}
+
+function renderCaptainVote(game) {
+  const panel = element('captain-vote-panel');
+  const voting = game.phase === 'captain_vote';
+  panel.classList.toggle('hidden', !voting);
+  if (!voting) return;
+  const selected = state.player.captainVote;
+  const candidates = state.player.captainCandidates || [];
+  const buttons = candidates.map((candidate) => {
+    const button = document.createElement('button'); button.type = 'button';
+    button.className = 'captain-candidate';
+    if (selected === candidate.playerIndex) button.classList.add('selected');
+    const avatar = document.createElement('span'); avatar.textContent = candidate.name.slice(0, 1).toUpperCase();
+    const name = document.createElement('strong'); name.textContent = candidate.name;
+    const note = document.createElement('small'); note.textContent = candidate.playerIndex === state.player.playerIndex ? 'Това си ти' : 'Избери';
+    button.append(avatar, name, note);
+    button.addEventListener('click', () => submitCaptainVote(candidate.playerIndex, button));
+    return button;
+  });
+  element('captain-candidate-grid').replaceChildren(...buttons);
+  element('captain-vote-status').textContent = selected === undefined || selected === null
+    ? 'Избери един от позволените играчи.'
+    : 'Гласът ти е записан. Можеш да го промениш, докато всички гласуват.';
+  element('captain-vote-progress').replaceChildren(...activeTeams(game).map((team) => {
+    const item = document.createElement('span');
+    item.textContent = `${bgTeamName(team.name)}: ${team.captainVoteCount}/${team.captainVoteRequired}`;
+    if (team.captainVoteCount === team.captainVoteRequired) item.classList.add('complete');
+    return item;
+  }));
+}
+
+async function submitCaptainVote(playerIndex, button) {
+  button.disabled = true;
+  try {
+    const response = await request('/api/player/captain-vote', { method: 'POST', body: JSON.stringify({ playerIndex }) }, true);
+    state.player.captainVote = playerIndex;
+    state.game = response.game;
+    if (response.finalized) await refresh();
+    else renderGame();
+  } catch (error) {
+    element('captain-vote-status').textContent = error.message;
+    element('captain-vote-status').classList.add('error');
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function renderQuestionMedia(container, media) {

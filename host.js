@@ -115,7 +115,7 @@ function render() {
     element('host-question').textContent = game.questionNumber;
   }
   const phaseNames = {
-    lobby: 'lobby', test_question: 'test question', test_result: 'test complete', category_start: 'new category',
+    lobby: 'lobby', test_question: 'test question', test_result: 'test complete', category_start: 'new category', captain_vote: 'captain vote',
     betting: 'wagers', question: 'question', results: 'results', finished: 'finished'
   };
   element('phase-badge').textContent = phaseNames[game.phase] || game.phase;
@@ -177,7 +177,7 @@ function renderRound(game) {
   controls.replaceChildren();
   const titleByPhase = {
     lobby: 'Prepare the game', test_question: 'One-player system test', test_result: 'System test result',
-    category_start: 'Draw new captains', betting: 'Captain wagers', question: 'Judge the answers',
+    category_start: 'Open captain voting', captain_vote: 'Captain election', betting: 'Captain wagers', question: 'Judge the answers',
     results: 'Review the result', finished: 'Game complete'
   };
   element('round-title').textContent = titleByPhase[game.phase] || 'Game control';
@@ -186,8 +186,24 @@ function renderRound(game) {
   if (game.phase === 'test_question') return renderTestQuestion(game, controls);
   if (game.phase === 'test_result') return renderTestResult(game, controls);
   if (game.phase === 'category_start') {
-    controls.innerHTML = `<p class="helper">${game.gameMode === 'duo' ? 'One player becomes captain and the other becomes the answerer for the next ten questions.' : 'The system randomly selects one of the four players on every team as captain for the next ten questions.'}</p>`;
-    controls.append(actionButton('Draw captains and start category', () => post('/api/host/category/start', {})));
+    controls.innerHTML = '<p class="helper">Open the team vote before this category begins.</p>';
+    controls.append(actionButton('Open captain voting', () => post('/api/host/category/start', {})));
+    return;
+  }
+
+  if (game.phase === 'captain_vote') {
+    const help = document.createElement('p'); help.className = 'helper';
+    help.textContent = game.gameMode === 'duo'
+      ? 'Both players vote. Practice mode alternates eligibility when the two-round rule would leave no candidate.'
+      : 'Every player votes inside their team. Anyone who captained either of the last two categories is ineligible; self-votes are allowed.';
+    const grid = document.createElement('div'); grid.className = 'captain-grid';
+    grid.replaceChildren(...activeTeams(game).map((team) => {
+      const progress = document.createElement('div'); progress.className = 'team-roles';
+      const count = document.createElement('span'); count.className = 'captain-name'; count.textContent = `${team.captainVoteCount}/${team.captainVoteRequired} votes submitted`;
+      const note = document.createElement('small'); note.textContent = team.captainVoteCount === team.captainVoteRequired ? 'Voting complete' : 'Waiting for team members';
+      progress.append(count, note); return teamCard(team, progress);
+    }));
+    controls.append(help, grid);
     return;
   }
 
@@ -228,7 +244,7 @@ function renderLobby(game, controls) {
   testButton.disabled = game.playerCount < 1;
   actions.append(testButton);
   if (game.testCompleted) {
-    const startButton = actionButton(game.gameMode === 'duo' ? 'Start 2-player practice quiz' : 'Start the real quiz', () => post('/api/host/game/start', {}));
+    const startButton = actionButton(game.gameMode === 'duo' ? 'Start practice captain vote' : 'Start captain vote', () => post('/api/host/game/start', {}));
     startButton.disabled = game.playerCount !== game.playerCapacity;
     actions.append(startButton);
   }
@@ -266,7 +282,7 @@ function renderTestResult(game, controls) {
     actionButton('Return to lobby', () => post('/api/host/test/reset', {}), 'button-secondary')
   );
   const startButton = actionButton('Start the real quiz', () => post('/api/host/game/start', {}));
-  startButton.textContent = game.gameMode === 'duo' ? 'Start 2-player practice quiz' : 'Start the real quiz';
+  startButton.textContent = game.gameMode === 'duo' ? 'Start practice captain vote' : 'Start captain vote';
   startButton.disabled = game.playerCount !== game.playerCapacity;
   actions.append(startButton);
   controls.append(testPreview(game.test), result, actions);
