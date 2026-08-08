@@ -15,7 +15,6 @@ function setView(name) {
   for (const view of ['loading', 'offline', 'join', 'game']) {
     element(`${view}-view`).classList.toggle('hidden', view !== name);
   }
-  element('leaderboard-dock').classList.toggle('hidden', name !== 'game');
 }
 
 function setConnection(kind, label) {
@@ -134,7 +133,6 @@ function renderGame() {
   renderStage(game);
   renderCaptainPanel(game);
   renderTeams(game);
-  renderLeaderboard(game.teams);
   if (!pregame) renderCategories(game);
 }
 
@@ -284,17 +282,6 @@ function renderTeams(game) {
     return card;
   });
   grid.replaceChildren(...cards);
-}
-
-function renderLeaderboard(teams) {
-  const sorted = [...teams].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, 'bg'));
-  element('leaderboard-list').replaceChildren(...sorted.map((team) => {
-    const row = document.createElement('li');
-    const name = document.createElement('span'); name.textContent = bgTeamName(team.name);
-    const points = document.createElement('strong'); points.textContent = team.points;
-    row.append(name, points);
-    return row;
-  }));
 }
 
 function renderCategories(game) {
