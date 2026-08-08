@@ -125,6 +125,29 @@ def current_question():
     return QUESTIONS[GAME["currentQuestionIndex"]]
 
 
+def question_for_player(question):
+    """Split the host answer from entries written as: Question text [Answer]."""
+    if not question:
+        return None
+    prompt = str(question.get("prompt", "")).strip()
+    answer = str(question.get("answer", "")).strip()
+    bracketed = re.fullmatch(r"(?s)(.*?)\s*\[([^\[\]]+)\]\s*", prompt)
+    if bracketed:
+        prompt = bracketed.group(1).strip()
+        answer = answer or bracketed.group(2).strip()
+    return {
+        "id": question["id"],
+        "number": question["number"],
+        "categoryIndex": question["categoryIndex"],
+        "prompt": prompt,
+        "answer": answer,
+    }
+
+
+def question_bank_for_host():
+    return [question_for_player(question) for question in QUESTIONS]
+
+
 def captain_for(team):
     player_index = GAME["captains"].get(team["id"])
     if isinstance(player_index, int) and 0 <= player_index < len(team["players"]):
@@ -152,11 +175,11 @@ def find_player_by_token(token):
 
 
 def public_game():
-    question = current_question()
+    question = question_for_player(current_question())
     phase = GAME["phase"]
     visible_question = None
     if question and phase in {"question", "results"}:
-        visible_question = question
+        visible_question = {key: value for key, value in question.items() if key != "answer"}
     teams = []
     for team in GAME["teams"]:
         team_view = {
@@ -203,6 +226,9 @@ def host_game():
     view["bets"] = GAME["bets"]
     view["pendingBets"] = GAME["pendingBets"]
     view["results"] = GAME["results"]
+    view["questionBank"] = question_bank_for_host()
+    if view.get("question"):
+        view["question"]["answer"] = question_for_player(current_question())["answer"]
     return view
 
 
@@ -217,7 +243,7 @@ def clean_label(value, fallback, maximum=32):
 
 
 class QuizHandler(BaseHTTPRequestHandler):
-    server_version = "GDBGCQuiz/5.0"
+    server_version = "GDBGCQuiz/6.0"
 
     def log_message(self, message, *args):
         print(f"{self.address_string()} - {message % args}", flush=True)
@@ -269,7 +295,7 @@ class QuizHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/health":
-            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 5, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
+            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 6, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
         elif path == "/api/game":
             with LOCK:
                 self.send_json(200, public_game())

@@ -26,6 +26,9 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .round-team .captain-name { color: var(--accent); }
 .question-preview { margin: 20px 0; padding: 22px; border: 1px solid rgba(114,184,255,.3); border-radius: 14px; background: rgba(114,184,255,.08); }
 .question-preview p { margin: 9px 0 0; font-size: 1.2rem; font-weight: 750; line-height: 1.4; }
+.question-answer { display: flex; gap: 8px; align-items: baseline; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.question-answer span { color: var(--muted); font-size: .72rem; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.question-answer strong { color: var(--accent); }
 .control-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
 .button-secondary { border: 1px solid var(--line); background: var(--surface-strong); color: var(--text); }
 .lobby-status { display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: center; margin: 20px 0; padding: 17px; border: 1px solid var(--line); border-radius: 13px; background: rgba(8,17,31,.5); }
@@ -46,6 +49,27 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .wager-submitted, .wager-waiting { display: block; font-family: ui-monospace, monospace; }
 .wager-submitted { color: var(--accent); }
 .wager-waiting { color: var(--muted); }
+.question-bank-card { padding: 0; overflow: hidden; box-shadow: 0 15px 42px rgba(0,0,0,.24); }
+.question-bank-card details > summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 20px 22px; cursor: pointer; list-style: none; }
+.question-bank-card details > summary::-webkit-details-marker { display: none; }
+.question-bank-card details > summary::after { color: var(--accent); content: "+"; font-family: ui-monospace, monospace; font-size: 1.3rem; font-weight: 900; }
+.question-bank-card details[open] > summary::after { content: "−"; }
+.question-bank-card summary .eyebrow { display: block; margin-bottom: 5px; font-size: .64rem; }
+.question-bank-card summary strong { font-size: 1.15rem; }
+.question-bank-count { display: grid; min-width: 38px; height: 30px; margin-left: auto; place-items: center; border: 1px solid rgba(255,180,84,.38); border-radius: 7px; background: rgba(255,180,84,.1); color: var(--accent); font-family: ui-monospace, monospace; font-size: .74rem; font-weight: 900; }
+.question-bank-card > details > .helper, .question-bank-filter, .question-bank-list { margin-right: 22px; margin-left: 22px; }
+.question-bank-card > details > .helper { margin-top: 0; }
+.question-bank-filter { display: grid; gap: 6px; color: var(--muted); font-size: .72rem; }
+.question-bank-list { display: grid; gap: 8px; max-height: 430px; margin-top: 14px; margin-bottom: 22px; padding-right: 5px; overflow-y: auto; scrollbar-color: var(--accent) #071a33; scrollbar-width: thin; }
+.question-bank-item { display: grid; grid-template-columns: 30px 1fr; gap: 10px; padding: 11px; border: 1px solid var(--line); border-radius: 9px; background: rgba(8,17,31,.5); }
+.question-bank-number { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 6px; background: var(--surface-strong); color: var(--blue); font-family: ui-monospace, monospace; font-size: .72rem; font-weight: 900; }
+.question-bank-item small { color: var(--muted); font-size: .63rem; text-transform: uppercase; }
+.question-bank-item p { margin: 4px 0 7px; font-size: .78rem; font-weight: 700; line-height: 1.35; }
+.bank-answer { display: block; color: var(--accent); font-size: .72rem; line-height: 1.35; }
+.bank-answer::before { color: var(--muted); content: "Answer: "; font-weight: 500; }
+.question-bank-item.current { border-color: var(--pink); background: rgba(255,114,182,.09); box-shadow: inset 3px 0 0 var(--pink); }
+.question-bank-item.current .question-bank-number { background: var(--pink); color: #171d38; }
+.question-bank-item.complete { opacity: .62; }
 
 @media (max-width: 920px) { .host-grid { grid-template-columns: 1fr; } }
 @media (max-width: 660px) { .team-editor, .captain-grid, .wager-grid, .result-grid { grid-template-columns: 1fr; } .section-heading { align-items: stretch; flex-direction: column; } .header-actions a { display: none; } .player-fields { grid-template-columns: 1fr; } }

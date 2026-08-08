@@ -1,4 +1,4 @@
-const state = { apiBase: '', token: localStorage.getItem('gdbgc-host-token') || '', game: null, timer: null };
+const state = { apiBase: '', token: localStorage.getItem('gdbgc-host-token') || '', game: null, timer: null, questionFilter: 'all' };
 const element = (id) => document.getElementById(id);
 
 function setConnection(kind, label) {
@@ -119,6 +119,7 @@ function render() {
   renderRound(game);
   renderTeams(game);
   renderPoints(game);
+  renderQuestionBank(game);
 }
 
 function teamCard(team, content) {
@@ -248,7 +249,39 @@ function questionPreview(game) {
   const box = document.createElement('div'); box.className = 'question-preview';
   const label = document.createElement('span'); label.className = 'eyebrow'; label.textContent = `Question ${game.question.number}`;
   const prompt = document.createElement('p'); prompt.textContent = game.question.prompt;
-  box.append(label, prompt); return box;
+  box.append(label, prompt);
+  const answer = document.createElement('div'); answer.className = 'question-answer';
+  const answerLabel = document.createElement('span'); answerLabel.textContent = 'Answer';
+  const answerText = document.createElement('strong'); answerText.textContent = game.question.answer || 'Not provided yet';
+  answer.append(answerLabel, answerText); box.append(answer); return box;
+}
+
+function renderQuestionBank(game) {
+  const filter = element('question-category-filter');
+  if (filter.options.length === 1) {
+    game.categories.forEach((category, index) => {
+      const option = document.createElement('option');
+      option.value = String(index);
+      option.textContent = `${category.name} · ${category.start}–${category.end}`;
+      filter.append(option);
+    });
+  }
+  filter.value = state.questionFilter;
+  const questions = (game.questionBank || []).filter((question) => state.questionFilter === 'all' || question.categoryIndex === Number(state.questionFilter));
+  element('question-bank-count').textContent = String(questions.length);
+  element('question-bank-list').replaceChildren(...questions.map((question) => {
+    const item = document.createElement('article');
+    const isCurrent = !isPregame(game.phase) && question.number === game.questionNumber;
+    const isComplete = question.number < game.questionNumber && !isPregame(game.phase);
+    item.className = `question-bank-item${isCurrent ? ' current' : ''}${isComplete ? ' complete' : ''}`;
+    const number = document.createElement('span'); number.className = 'question-bank-number'; number.textContent = String(question.number);
+    const copy = document.createElement('div');
+    const category = game.categories[question.categoryIndex];
+    const meta = document.createElement('small'); meta.textContent = category?.name || `Category ${question.categoryIndex + 1}`;
+    const prompt = document.createElement('p'); prompt.textContent = question.prompt;
+    const answer = document.createElement('strong'); answer.className = 'bank-answer'; answer.textContent = question.answer || 'Not provided yet';
+    copy.append(meta, prompt, answer); item.append(number, copy); return item;
+  }));
 }
 
 function renderScoring(game, controls) {
@@ -348,6 +381,11 @@ element('save-teams').addEventListener('click', async () => {
 element('reset-button').addEventListener('click', async () => {
   if (!confirm('Reset all players, scores, wagers, captains, and progress?')) return;
   await post('/api/host/reset', { confirmation: 'RESET' });
+});
+
+element('question-category-filter').addEventListener('change', (event) => {
+  state.questionFilter = event.target.value;
+  if (state.game) renderQuestionBank(state.game);
 });
 
 connect();
