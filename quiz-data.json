@@ -2,13 +2,13 @@
   "categories": [
     {
       "id": "category-1",
-      "name": "Bulgaria trivia",
+      "name": "БЪЛГАРИЯ TRIVIA",
       "start": 1,
       "end": 10
     },
     {
       "id": "category-2",
-      "name": "BGDL Trivia:",
+      "name": "BGDL TRIVIA:",
       "start": 11,
       "end": 20
     },
@@ -20,37 +20,37 @@
     },
     {
       "id": "category-4",
-      "name": "GIF caption trivia",
+      "name": "GIF CAPTION TRIVIA",
       "start": 31,
       "end": 40
     },
     {
       "id": "category-5",
-      "name": "Какво е искал да каже авторът?",
+      "name": "КАКВО Е ИСКАЛ ДА КАЖЕ АВТОРЪТ?",
       "start": 41,
       "end": 50
     },
     {
       "id": "category-6",
-      "name": "Shitty thumbnail",
+      "name": "SHITTY THUMBNAIL",
       "start": 51,
       "end": 60
     },
     {
       "id": "category-7",
-      "name": "Elite ball knowledge",
+      "name": "ELITE BALL KNOWLEDGE",
       "start": 61,
       "end": 70
     },
     {
       "id": "category-8",
-      "name": "Pointercrate Trivia",
+      "name": "POINTERCRATE TRIVIA",
       "start": 71,
       "end": 80
     },
     {
       "id": "category-9",
-      "name": "Yanshmek trivia",
+      "name": "YANSHMEK TRIVIA",
       "start": 81,
       "end": 90
     },
@@ -132,7 +132,13 @@
       "categoryIndex": 0,
       "prompt": "Какъв процент от хората в България над 15 годишна възраст попада в категорията на тежката епизодична или хронична консумация на алкохолни изделия или на колко процента се намира този клик в Bloodlust?",
       "answer": "9",
-      "media": []
+      "media": [
+        {
+          "type": "image",
+          "src": "assets/questions/image3.png",
+          "alt": "Attachment for question 9"
+        }
+      ]
     },
     {
       "id": "question-10",
@@ -140,13 +146,7 @@
       "categoryIndex": 0,
       "prompt": "Коя година е основана България от хан Аспарух?",
       "answer": "681",
-      "media": [
-        {
-          "type": "image",
-          "src": "assets/questions/image3.png",
-          "alt": "Attachment for question 10"
-        }
-      ]
+      "media": []
     },
     {
       "id": "question-11",

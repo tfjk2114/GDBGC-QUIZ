@@ -17,7 +17,6 @@
         <div class="header-actions">
           <a href="./">Player screen</a>
           <button id="logout-button" class="text-button hidden" type="button">Lock panel</button>
-          <div id="connection-status" class="status status-loading"><span class="status-dot"></span><span>Connecting</span></div>
         </div>
       </header>
 
@@ -43,6 +42,14 @@
           </section>
 
           <div id="host-message" class="host-message hidden" role="status"></div>
+
+          <section class="card host-timer-control">
+            <div><p class="eyebrow">Player countdown</p><h2>Custom timer</h2><p class="helper">When it expires, captain answers lock and teams wait for review.</p></div>
+            <label><span>Seconds</span><input id="host-timer-seconds" type="number" min="1" max="3600" value="30"></label>
+            <strong id="host-timer-clock">30s</strong>
+            <button id="start-timer-button" class="button button-primary" type="button">Start timer</button>
+            <button id="stop-timer-button" class="button button-secondary" type="button">Stop</button>
+          </section>
 
           <section id="host-live-question" class="card host-live-question hidden" aria-live="polite">
             <div><span id="host-live-question-label" class="eyebrow"></span><p id="host-live-question-text"></p><div id="host-live-question-media" class="question-media host-question-media"></div></div>

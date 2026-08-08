@@ -3,6 +3,7 @@ const element = (id) => document.getElementById(id);
 
 function setConnection(kind, label) {
   const status = element('connection-status');
+  if (!status) return;
   status.className = `status status-${kind}`;
   status.lastElementChild.textContent = label;
 }
@@ -116,7 +117,7 @@ function render() {
   }
   const phaseNames = {
     lobby: 'lobby', test_question: 'test question', test_result: 'test complete', category_start: 'new category', captain_vote: 'captain vote',
-    betting: 'wagers', question: 'question', results: 'results', finished: 'finished'
+    betting: 'wagers', question: 'question', review: 'answer review', results: 'results', finished: 'finished'
   };
   element('phase-badge').textContent = phaseNames[game.phase] || game.phase;
   const modeButton = element('game-mode-button');
@@ -131,7 +132,24 @@ function render() {
   renderHostBets(game);
   renderQuestionBank(game);
   renderHostLiveQuestion(game);
+  renderHostTimer(game);
   renderHostPanels();
+}
+
+function renderHostTimer(game) {
+  const input = element('host-timer-seconds');
+  if (document.activeElement !== input) input.value = game.timer?.duration || 30;
+  element('stop-timer-button').disabled = !game.timer?.running;
+  updateHostTimerClock();
+}
+
+function updateHostTimerClock() {
+  const timer = state.game?.timer;
+  if (!timer) return;
+  const remaining = timer.running && timer.deadline ? Math.max(0, Math.ceil((timer.deadline - Date.now()) / 1000)) : timer.expired ? 0 : timer.duration;
+  const clock = element('host-timer-clock');
+  clock.textContent = timer.expired ? 'Expired' : `${remaining}s`;
+  clock.classList.toggle('timer-expired', Boolean(timer.expired));
 }
 
 function renderHostLiveQuestion(game) {
@@ -177,7 +195,7 @@ function renderRound(game) {
   controls.replaceChildren();
   const titleByPhase = {
     lobby: 'Prepare the game', test_question: 'One-player system test', test_result: 'System test result',
-    category_start: 'Open captain voting', captain_vote: 'Captain election', betting: 'Captain wagers', question: 'Judge the answers',
+    category_start: 'Open captain voting', captain_vote: 'Captain election', betting: 'Captain wagers', question: 'Judge the answers', review: 'Review locked answers',
     results: 'Review the result', finished: 'Game complete'
   };
   element('round-title').textContent = titleByPhase[game.phase] || 'Game control';
@@ -194,8 +212,8 @@ function renderRound(game) {
   if (game.phase === 'captain_vote') {
     const help = document.createElement('p'); help.className = 'helper';
     help.textContent = game.gameMode === 'duo'
-      ? 'Both players vote. Practice mode alternates eligibility when the two-round rule would leave no candidate.'
-      : 'Every player votes inside their team. Anyone who captained either of the last two categories is ineligible; self-votes are allowed.';
+      ? 'Both players vote. The captain from the previous category is ineligible; self-votes are allowed.'
+      : 'Every player votes inside their team. Only the captain from the previous category is ineligible; self-votes are allowed.';
     const grid = document.createElement('div'); grid.className = 'captain-grid';
     grid.replaceChildren(...activeTeams(game).map((team) => {
       const progress = document.createElement('div'); progress.className = 'team-roles';
@@ -222,6 +240,7 @@ function renderRound(game) {
 
   if (game.phase === 'betting') renderBetting(game, controls);
   if (game.phase === 'question') renderScoring(game, controls);
+  if (game.phase === 'review') renderScoring(game, controls);
   if (game.phase === 'results') renderResults(game, controls);
   if (game.phase === 'finished') {
     const copy = document.createElement('p');
@@ -536,9 +555,20 @@ element('host-next-question').addEventListener('click', async () => {
   await post('/api/host/question/next', {});
 });
 
+element('start-timer-button').addEventListener('click', async () => {
+  const seconds = Number(element('host-timer-seconds').value);
+  await post('/api/host/timer', { action: 'start', seconds });
+});
+
+element('stop-timer-button').addEventListener('click', async () => {
+  const seconds = Number(element('host-timer-seconds').value);
+  await post('/api/host/timer', { action: 'stop', seconds });
+});
+
 document.querySelectorAll('[data-host-panel]').forEach((button) => button.addEventListener('click', () => {
   state.activePanel = state.activePanel === button.dataset.hostPanel ? null : button.dataset.hostPanel;
   renderHostPanels();
 }));
 
+setInterval(updateHostTimerClock, 250);
 connect();

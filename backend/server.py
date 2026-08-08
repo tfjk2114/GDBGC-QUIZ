@@ -78,6 +78,7 @@ def default_game(teams=None, game_mode="full"):
         "results": {},
         "teamAnswers": {},
         "suggestions": {},
+        "timer": {"duration": 30, "running": False, "startedAt": None, "deadline": None, "expired": False},
         "teams": teams or default_teams(),
     }
 
@@ -105,6 +106,7 @@ def load_game():
         game.setdefault("captainVotes", {})
         game.setdefault("teamAnswers", {})
         game.setdefault("suggestions", {})
+        game.setdefault("timer", {"duration": 30, "running": False, "startedAt": None, "deadline": None, "expired": False})
         return game
     except (FileNotFoundError, json.JSONDecodeError, ValueError):
         game = default_game()
@@ -145,11 +147,11 @@ def question_for_player(question):
     if not question:
         return None
     prompt = str(question.get("prompt", "")).strip()
-    answer = str(question.get("answer", "")).strip()
+    answer = str(question.get("answer", "")).strip().upper()
     bracketed = re.fullmatch(r"(?s)(.*?)\s*\[([^\[\]]+)\]\s*", prompt)
     if bracketed:
         prompt = bracketed.group(1).strip()
-        answer = answer or bracketed.group(2).strip()
+        answer = answer or bracketed.group(2).strip().upper()
     return {
         "id": question["id"],
         "number": question["number"],
@@ -197,10 +199,8 @@ def answerer_for(team):
 
 def eligible_captain_indices(team):
     filled = [index for index, player in enumerate(team["players"]) if player]
-    recent = GAME.get("captainHistory", {}).get(team["id"], [])[-2:]
+    recent = GAME.get("captainHistory", {}).get(team["id"], [])[-1:]
     eligible = [index for index in filled if index not in recent]
-    if not eligible and game_mode() == "duo":
-        eligible = [index for index in filled if not recent or index != recent[-1]]
     return eligible
 
 
@@ -223,7 +223,7 @@ def finalize_captain_vote_if_ready():
         highest = max(counts.values())
         captain = random.choice([candidate for candidate, count in counts.items() if count == highest])
         captains[team["id"]] = captain
-        history[team["id"]] = (history.get(team["id"], []) + [captain])[-2:]
+        history[team["id"]] = (history.get(team["id"], []) + [captain])[-1:]
     GAME["captains"] = captains
     GAME["captainVotes"] = {}
     GAME["phase"] = "betting"
@@ -249,11 +249,37 @@ def find_player_by_token(token):
     return None
 
 
+def timer_for_client():
+    timer = GAME.get("timer", {})
+    return {
+        "duration": timer.get("duration", 30),
+        "running": bool(timer.get("running")),
+        "deadline": round(timer["deadline"] * 1000) if timer.get("deadline") else None,
+        "expired": bool(timer.get("expired")),
+    }
+
+
+def clear_running_timer():
+    duration = GAME.get("timer", {}).get("duration", 30)
+    GAME["timer"] = {"duration": duration, "running": False, "startedAt": None, "deadline": None, "expired": False}
+
+
+def expire_timer_if_needed():
+    timer = GAME.get("timer", {})
+    if not timer.get("running") or not timer.get("deadline") or time.time() < timer["deadline"]:
+        return False
+    timer["running"] = False
+    timer["expired"] = True
+    if GAME["phase"] == "question":
+        GAME["phase"] = "review"
+    return True
+
+
 def public_game():
     question = question_for_player(current_question())
     phase = GAME["phase"]
     visible_question = None
-    if question and phase == "question":
+    if question and phase in {"question", "review"}:
         visible_question = {key: value for key, value in question.items() if key != "answer"}
     elif question and phase == "results":
         visible_question = question
@@ -271,7 +297,7 @@ def public_game():
             "answerer": answerer_for(team),
             "active": is_active,
         }
-        if phase in {"question", "results"}:
+        if phase in {"question", "review", "results"}:
             team_view["bet"] = GAME["bets"].get(team["id"])
         if phase == "betting":
             team_view["hasPendingBet"] = team["id"] in GAME["pendingBets"]
@@ -295,6 +321,7 @@ def public_game():
         "gameMode": game_mode(),
         "testCompleted": GAME["testCompleted"],
         "test": GAME["test"] if phase in {"test_question", "test_result"} else None,
+        "timer": timer_for_client(),
         "teams": teams,
         "categories": CATEGORIES,
     }
@@ -343,7 +370,7 @@ def clean_text(value, maximum):
 
 
 class QuizHandler(BaseHTTPRequestHandler):
-    server_version = "GDBGCQuiz/11.0"
+    server_version = "GDBGCQuiz/12.0"
 
     def log_message(self, message, *args):
         print(f"{self.address_string()} - {message % args}", flush=True)
@@ -395,12 +422,16 @@ class QuizHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/health":
-            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 11, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
+            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 12, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
         elif path == "/api/game":
             with LOCK:
+                if expire_timer_if_needed():
+                    save_game()
                 self.send_json(200, public_game())
         elif path == "/api/player/status":
             with LOCK:
+                if expire_timer_if_needed():
+                    save_game()
                 identity = find_player_by_token(self.player_token())
                 if not identity:
                     self.send_json(401, {"error": "Сесията на играча не е валидна"})
@@ -437,6 +468,8 @@ class QuizHandler(BaseHTTPRequestHandler):
         elif path == "/api/host/state":
             if self.require_host():
                 with LOCK:
+                    if expire_timer_if_needed():
+                        save_game()
                     self.send_json(200, host_game())
         else:
             self.send_json(404, {"error": "Not found"})
@@ -445,6 +478,9 @@ class QuizHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         try:
             payload = self.read_json()
+            with LOCK:
+                if expire_timer_if_needed():
+                    save_game()
             if path in {"/api/players/join", "/api/players/leave", "/api/player/captain-vote", "/api/captain/wager", "/api/captain/answer", "/api/player/suggestion"}:
                 with LOCK:
                     if path == "/api/players/join":
@@ -489,6 +525,8 @@ class QuizHandler(BaseHTTPRequestHandler):
                     self.next_question()
                 elif path == "/api/host/points":
                     self.update_points(payload)
+                elif path == "/api/host/timer":
+                    self.update_timer(payload)
                 elif path == "/api/host/reset":
                     self.reset_game(payload)
                 else:
@@ -582,7 +620,7 @@ class QuizHandler(BaseHTTPRequestHandler):
             raise ValueError("Отборът не участва в този режим")
         candidate = payload.get("playerIndex")
         if isinstance(candidate, bool) or not isinstance(candidate, int) or candidate not in eligible_captain_indices(team):
-            raise ValueError("Избери играч, който не е бил капитан през последните две категории")
+            raise ValueError("Избери играч, който не е бил капитан в предишната категория")
         GAME["captainVotes"].setdefault(team["id"], {})[str(player_index)] = candidate
         finalized = finalize_captain_vote_if_ready()
         return {"vote": candidate, "finalized": finalized, "game": public_game()}
@@ -597,7 +635,7 @@ class QuizHandler(BaseHTTPRequestHandler):
         team = GAME["teams"][team_index]
         if team not in active_teams() or GAME["captains"].get(team["id"]) != player_index:
             raise ValueError("Само капитанът може да изпрати отговора на отбора")
-        answer = clean_text(payload.get("answer"), 500)
+        answer = clean_text(payload.get("answer"), 500).upper()
         GAME["teamAnswers"][team["id"]] = answer
         return {"answer": answer}
 
@@ -648,7 +686,7 @@ class QuizHandler(BaseHTTPRequestHandler):
             team["players"] = cleaned_players
             tokens = team.setdefault("playerTokens", ["", "", "", ""])
             for seat, player in enumerate(cleaned_players):
-                if not player or player != old_players[seat]:
+                if not player or not old_players[seat]:
                     tokens[seat] = ""
         if game_mode() == "duo":
             self.set_game_mode({"mode": "duo"})
@@ -703,6 +741,7 @@ class QuizHandler(BaseHTTPRequestHandler):
         GAME["results"] = {}
         GAME["teamAnswers"] = {}
         GAME["suggestions"] = {}
+        clear_running_timer()
 
     def start_test(self):
         if GAME["phase"] not in {"lobby", "test_result"}:
@@ -759,6 +798,7 @@ class QuizHandler(BaseHTTPRequestHandler):
         GAME["results"] = {}
         GAME["teamAnswers"] = {}
         GAME["suggestions"] = {}
+        clear_running_timer()
         GAME["phase"] = "captain_vote"
 
     def start_category(self):
@@ -771,6 +811,7 @@ class QuizHandler(BaseHTTPRequestHandler):
         GAME["results"] = {}
         GAME["teamAnswers"] = {}
         GAME["suggestions"] = {}
+        clear_running_timer()
         GAME["phase"] = "captain_vote"
 
     def reveal_question(self, payload):
@@ -796,11 +837,14 @@ class QuizHandler(BaseHTTPRequestHandler):
         GAME["results"] = {}
         GAME["teamAnswers"] = {}
         GAME["suggestions"] = {}
+        clear_running_timer()
         GAME["phase"] = "question"
 
     def score_question(self, payload):
-        if GAME["phase"] != "question":
+        if GAME["phase"] not in {"question", "review"}:
             raise ValueError("The question is not ready to score")
+        if GAME.get("timer", {}).get("running"):
+            raise ValueError("Wait for the active timer to finish before scoring")
         submitted = payload.get("results")
         if not isinstance(submitted, dict):
             raise ValueError("A result is required for every team")
@@ -824,6 +868,7 @@ class QuizHandler(BaseHTTPRequestHandler):
         GAME["results"] = {}
         GAME["teamAnswers"] = {}
         GAME["suggestions"] = {}
+        clear_running_timer()
         if GAME["currentQuestionIndex"] >= 100:
             GAME["currentQuestionIndex"] = 100
             GAME["phase"] = "finished"
@@ -843,6 +888,19 @@ class QuizHandler(BaseHTTPRequestHandler):
         if not team:
             raise ValueError("Unknown team")
         team["points"] = points
+
+    def update_timer(self, payload):
+        action = payload.get("action")
+        seconds = payload.get("seconds", GAME.get("timer", {}).get("duration", 30))
+        if isinstance(seconds, bool) or not isinstance(seconds, int) or not 1 <= seconds <= 3600:
+            raise ValueError("Timer seconds must be a whole number between 1 and 3600")
+        if action == "start":
+            now = time.time()
+            GAME["timer"] = {"duration": seconds, "running": True, "startedAt": now, "deadline": now + seconds, "expired": False}
+        elif action == "stop":
+            GAME["timer"] = {"duration": seconds, "running": False, "startedAt": None, "deadline": None, "expired": False}
+        else:
+            raise ValueError("Choose start or stop for the timer")
 
     def reset_game(self, payload):
         if payload.get("confirmation") != "RESET":

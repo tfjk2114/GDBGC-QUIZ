@@ -10,6 +10,7 @@
     <script src="app.js" defer></script>
   </head>
   <body>
+    <div id="global-timer" class="global-timer hidden" role="timer" aria-live="polite"><span id="global-timer-label">Оставащо време</span><strong id="global-timer-value">30</strong></div>
     <div class="page-shell">
       <header class="site-header">
         <a class="brand" href="./" aria-label="Начало на GDBGC Викторина">
@@ -18,7 +19,6 @@
         </a>
         <div class="header-side">
           <div id="player-identity" class="player-identity hidden"><span id="player-label"></span><button id="leave-button" class="text-button" type="button">Напусни</button></div>
-          <div id="connection-status" class="status status-loading" role="status"><span class="status-dot"></span><span>Свързване</span></div>
         </div>
       </header>
 
@@ -63,7 +63,7 @@
           <section id="captain-vote-panel" class="card captain-vote-panel hidden" aria-live="polite">
             <p class="eyebrow">Избор на капитан</p>
             <h2>Гласувай за капитан</h2>
-            <p class="vote-help">Можеш да гласуваш и за себе си. Играчите, които са били капитани през последните две категории, не участват.</p>
+            <p class="vote-help">Можеш да гласуваш и за себе си. Капитанът от предишната категория не участва.</p>
             <div id="captain-candidate-grid" class="captain-candidate-grid"></div>
             <p id="captain-vote-status" class="communication-status"></p>
             <div id="captain-vote-progress" class="captain-vote-progress"></div>

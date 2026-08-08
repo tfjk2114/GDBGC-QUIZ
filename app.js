@@ -4,12 +4,13 @@ const state = {
   player: null,
   game: null,
   timer: null,
+  timerTicker: null,
   activePanel: null,
   betPanelOpen: false
 };
 const element = (id) => document.getElementById(id);
 const bgTeamName = (name) => name.replace(/^Team (\d+)$/, 'Отбор $1');
-const bgCategoryName = (name) => name.replace(/^Category (\d+)$/, 'Категория $1');
+const bgCategoryName = (name) => name.replace(/^Category (\d+)$/, 'Категория $1').toLocaleUpperCase('bg');
 
 function setView(name) {
   for (const view of ['loading', 'offline', 'join', 'game']) {
@@ -19,6 +20,7 @@ function setView(name) {
 
 function setConnection(kind, label) {
   const status = element('connection-status');
+  if (!status) return;
   status.className = `status status-${kind}`;
   status.lastElementChild.textContent = label;
 }
@@ -79,6 +81,7 @@ function enterWaitingRoom() {
   setView('game');
   clearInterval(state.timer);
   state.timer = setInterval(refresh, 1200);
+  if (!state.timerTicker) state.timerTicker = setInterval(updatePlayerTimer, 250);
 }
 
 async function refresh() {
@@ -141,6 +144,7 @@ function renderGame() {
   }
   renderQuestionArea(game);
   renderCaptainVote(game);
+  updatePlayerTimer();
   renderCaptainPanel(game);
   renderCommunicationTabs(game);
   renderTeams(game);
@@ -221,10 +225,10 @@ function renderQuestionArea(game) {
   }
 
   const answerPanel = element('answer-reveal-panel');
-  answerPanel.classList.toggle('hidden', !['question', 'results'].includes(game.phase));
+  answerPanel.classList.toggle('hidden', !['question', 'review', 'results'].includes(game.phase));
   answerPanel.classList.toggle('answer-is-revealed', game.phase === 'results');
   element('correct-answer-text').textContent = game.phase === 'results'
-    ? (game.question?.answer || 'Няма предварително зададен отговор.')
+    ? (game.question?.answer || 'Няма предварително зададен отговор.').toLocaleUpperCase('bg')
     : 'Ще бъде разкрит след оценяването.';
 
   const responsesPanel = element('captain-responses-panel');
@@ -236,10 +240,29 @@ function renderQuestionArea(game) {
       const heading = document.createElement('div');
       const name = document.createElement('strong'); name.textContent = bgTeamName(team.name);
       const verdict = document.createElement('span'); verdict.textContent = team.correct ? 'Вярно' : 'Грешно';
-      const answer = document.createElement('p'); answer.textContent = game.teamAnswers?.[team.id] || 'Няма изпратен отговор';
-      heading.append(name, verdict); response.append(heading, answer); return response;
+      const answer = document.createElement('p'); answer.textContent = (game.teamAnswers?.[team.id] || 'Няма изпратен отговор').toLocaleUpperCase('bg');
+      heading.append(name, verdict); response.append(heading, answer);
+      if (!team.correct) {
+        const wanted = document.createElement('small'); wanted.className = 'wanted-answer';
+        wanted.textContent = `ЖЕЛАН ОТГОВОР: (${(game.question?.answer || 'НЯМА ЗАДАДЕН ОТГОВОР').toLocaleUpperCase('bg')})`;
+        response.append(wanted);
+      }
+      return response;
     }));
   }
+}
+
+function updatePlayerTimer() {
+  const timer = state.game?.timer;
+  const panel = element('global-timer');
+  if (!timer || (!timer.running && !timer.expired)) {
+    panel.classList.add('hidden'); return;
+  }
+  panel.classList.remove('hidden');
+  const remaining = timer.running && timer.deadline ? Math.max(0, Math.ceil((timer.deadline - Date.now()) / 1000)) : 0;
+  element('global-timer-value').textContent = remaining;
+  element('global-timer-label').textContent = remaining > 0 ? 'ОСТАВАЩО ВРЕМЕ' : 'ВРЕМЕТО ИЗТЕЧЕ';
+  panel.classList.toggle('timer-expired', remaining === 0);
 }
 
 function renderCaptainVote(game) {
