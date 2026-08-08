@@ -1,44 +1,45 @@
-# GDBGC Quiz
+# GDBGC Викторина
 
-A full-stack, host-controlled team quiz. GitHub Pages serves the player screen and host panel while game state and scoring run locally in WSL.
+Отборна викторина с панел за водещия. GitHub Pages обслужва екраните за играчи и водещ, а състоянието и точкуването работят локално в WSL.
 
-## Game format
+## Формат на играта
 
-- Four teams with four editable player slots each
-- 100 questions split into ten categories of ten
-- A randomly selected captain for each team at the start of every category
-- One unique wager from 1–100 per team before each question is revealed
-- Correct answers add the wager to the team score; incorrect answers add zero
-- Host-controlled verdicts and manual score overrides
-- A live hover leaderboard on the player screen
+- 16 играчи се присъединяват с име и се разпределят в четири отбора по четирима
+- Преди истинската викторина водещият провежда тест с един случаен играч и един въпрос
+- 100 въпроса, разделени в десет категории по десет
+- Нов случаен капитан за всеки отбор в началото на всяка категория
+- Уникален залог от 1 до 100 за всеки отбор преди всеки въпрос
+- Верният отговор добавя залога към резултата; грешният носи нула точки
+- Водещият определя резултатите и може ръчно да коригира точките
+- Класиране на живо при задържане на курсора върху купата
 
-Category names and question prompts are placeholders until the final content is supplied.
+Имената на категориите и текстовете на 100-те въпроса са временни, докато бъде предоставено финалното съдържание.
 
-## Architecture
+## Архитектура
 
 ```text
-GitHub Pages frontend
-        │ reads api.json
+Интерфейс в GitHub Pages
+        │ чете api.json
         ▼
-Cloudflare Quick Tunnel ──► Python API in WSL
-                              ├─ host-authenticated game controls
-                              └─ persistent teams, wagers, and scores
+Cloudflare Quick Tunnel ──► Python API в WSL
+                              ├─ защитен панел за водещия
+                              └─ играчи, залози, точки и прогрес
 ```
 
-The discovery-and-tunnel deployment pattern is adapted from [DebelToni/UnderLeaf](https://github.com/DebelToni/UnderLeaf), licensed under AGPL-3.0.
+Моделът за откриване на API и ротация на тунела е адаптиран от [DebelToni/UnderLeaf](https://github.com/DebelToni/UnderLeaf), лицензиран под AGPL-3.0.
 
-## Run
+## Стартиране
 
 ```bash
 python3 scripts/tunnel.py
 ```
 
-The supervisor starts the WSL backend, creates a Cloudflare Quick Tunnel, verifies it, updates `api.json`, and pushes the live backend address to GitHub Pages. Press `Ctrl+C` to stop it cleanly and publish the offline state.
+Процесът стартира WSL сървъра, създава Cloudflare Quick Tunnel, проверява публичния адрес, обновява `api.json` и го публикува в GitHub Pages.
 
-The public game board is at `index.html`; the protected control panel is at `host.html`. The host key is generated on first launch at `/var/lib/gdbgc-quiz/host-token`.
+Публичният екран е `index.html`, а защитеният панел е `host.html`. Ключът за водещия се създава при първото стартиране в `/var/lib/gdbgc-quiz/host-token`.
 
-Local backend data is saved in `data/game.json` and is intentionally excluded from Git.
+Локалното състояние е в `data/game.json` и не се добавя в Git.
 
-## License
+## Лиценз
 
-GNU Affero General Public License v3.0. See `LICENSE` and `NOTICE`.
+GNU Affero General Public License v3.0. Вижте `LICENSE` и `NOTICE`.

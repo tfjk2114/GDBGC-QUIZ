@@ -1,84 +1,92 @@
 <!doctype html>
-<html lang="en">
+<html lang="bg">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="The live GDBGC team quiz board.">
-    <title>GDBGC Quiz — Live Game</title>
+    <meta name="description" content="Играта на живо за отборната викторина GDBGC.">
+    <title>GDBGC Викторина — Игра на живо</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%AF%3C/text%3E%3C/svg%3E">
     <link rel="stylesheet" href="styles.css">
     <script src="app.js" defer></script>
   </head>
   <body>
-    <aside id="leaderboard-dock" class="leaderboard-dock" tabindex="0" aria-label="Live leaderboard">
-      <div class="leaderboard-tab"><span aria-hidden="true">🏆</span><strong>Leaderboard</strong></div>
+    <aside id="leaderboard-dock" class="leaderboard-dock hidden" tabindex="0" aria-label="Класиране на живо">
+      <div class="leaderboard-tab"><span aria-hidden="true">🏆</span><strong>Класиране</strong></div>
       <div class="leaderboard-panel">
-        <p class="eyebrow">Live standings</p>
+        <p class="eyebrow">Класиране на живо</p>
         <ol id="leaderboard-list" class="leaderboard-list"></ol>
       </div>
     </aside>
 
     <div class="page-shell">
       <header class="site-header">
-        <a class="brand" href="./" aria-label="GDBGC Quiz home">
+        <a class="brand" href="./" aria-label="Начало на GDBGC Викторина">
           <span class="brand-mark">G</span>
-          <span>GDBGC Quiz</span>
+          <span>GDBGC Викторина</span>
         </a>
-        <div id="connection-status" class="status status-loading" role="status">
-          <span class="status-dot"></span>
-          <span>Connecting</span>
+        <div class="header-side">
+          <div id="player-identity" class="player-identity hidden"><span id="player-label"></span><button id="leave-button" class="text-button" type="button">Напусни</button></div>
+          <div id="connection-status" class="status status-loading" role="status"><span class="status-dot"></span><span>Свързване</span></div>
         </div>
       </header>
 
       <main>
         <section id="loading-view" class="card hero-card" aria-live="polite">
-          <p class="eyebrow">Live game board</p>
-          <h1>Joining the room.</h1>
-          <p class="lede">Connecting to the host in WSL…</p>
+          <p class="eyebrow">Игра на живо</p>
+          <h1>Влизаме в залата.</h1>
+          <p class="lede">Свързваме се с водещия…</p>
           <div class="loader" aria-hidden="true"></div>
         </section>
 
         <section id="offline-view" class="card hero-card hidden" aria-live="polite">
-          <p class="eyebrow">Host offline</p>
-          <h1>The game room is closed.</h1>
-          <p id="offline-message" class="lede">Ask the host to start the WSL service, then reconnect.</p>
-          <button id="retry-button" class="button button-primary" type="button">Reconnect</button>
+          <p class="eyebrow">Водещият е офлайн</p>
+          <h1>Игралната зала е затворена.</h1>
+          <p id="offline-message" class="lede">Помолете водещия да стартира WSL услугата и опитайте отново.</p>
+          <button id="retry-button" class="button button-primary" type="button">Свържи отново</button>
+        </section>
+
+        <section id="join-view" class="card hero-card hidden">
+          <p class="eyebrow">Вход за играчи</p>
+          <h1>Присъедини се към играта.</h1>
+          <p class="lede">Въведи името си. Системата ще те постави автоматично в един от четирите отбора.</p>
+          <form id="join-form" class="join-form">
+            <label><span>Твоето име</span><input id="join-name" type="text" maxlength="28" autocomplete="name" placeholder="Например: Мария" required></label>
+            <button id="join-button" class="button button-primary" type="submit">Присъедини се</button>
+          </form>
+          <p id="join-count" class="join-count"></p>
+          <p id="join-error" class="form-error" role="alert"></p>
         </section>
 
         <div id="game-view" class="hidden">
           <section class="round-header">
             <div>
-              <p id="category-kicker" class="eyebrow">Category 1 · Questions 1–10</p>
-              <h1 id="category-name">Category 1</h1>
+              <p id="category-kicker" class="eyebrow"></p>
+              <h1 id="category-name"></h1>
             </div>
-            <div class="question-counter">
-              <strong id="question-number">1</strong>
-              <span>/ 100</span>
-            </div>
+            <div id="question-counter" class="question-counter"><strong id="question-number">1</strong><span>/ 100</span></div>
           </section>
 
-          <div class="progress-track" aria-hidden="true"><span id="game-progress"></span></div>
+          <div id="game-progress-track" class="progress-track" aria-hidden="true"><span id="game-progress"></span></div>
 
           <section id="stage-card" class="card stage-card" aria-live="polite">
             <p id="stage-kicker" class="eyebrow"></p>
             <h2 id="stage-title"></h2>
             <p id="stage-copy" class="lede"></p>
             <div id="question-box" class="question-box hidden">
-              <span id="question-label">Question 1</span>
+              <span id="question-label"></span>
               <p id="question-text"></p>
             </div>
           </section>
 
-          <section id="team-grid" class="team-grid" aria-label="Teams"></section>
-
-          <nav id="category-strip" class="category-strip" aria-label="Quiz categories"></nav>
+          <section id="team-grid" class="team-grid" aria-label="Отбори"></section>
+          <nav id="category-strip" class="category-strip" aria-label="Категории"></nav>
         </div>
       </main>
 
       <footer>
-        <span>Hover over the trophy for live standings</span>
+        <span>Задръж курсора върху купата за класирането</span>
         <span aria-hidden="true">·</span>
-        <a href="host.html">Host panel</a>
+        <a href="host.html">Панел за водещия</a>
       </footer>
     </div>
   </body>

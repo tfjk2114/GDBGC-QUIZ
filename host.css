@@ -27,6 +27,13 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .question-preview { margin: 20px 0; padding: 22px; border: 1px solid rgba(114,184,255,.3); border-radius: 14px; background: rgba(114,184,255,.08); }
 .question-preview p { margin: 9px 0 0; font-size: 1.2rem; font-weight: 750; line-height: 1.4; }
 .control-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.button-secondary { border: 1px solid var(--line); background: var(--surface-strong); color: var(--text); }
+.lobby-status { display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: center; margin: 20px 0; padding: 17px; border: 1px solid var(--line); border-radius: 13px; background: rgba(8,17,31,.5); }
+.lobby-status strong { color: var(--accent); font-size: 1.15rem; }
+.lobby-status span { color: var(--muted); }
+.test-success, .test-failure { margin: 18px 0; padding: 14px 16px; border-radius: 12px; font-weight: 800; }
+.test-success { background: rgba(125,243,198,.1); color: var(--accent); }
+.test-failure { background: rgba(255,135,150,.1); color: var(--danger); }
 .team-editor { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
 .team-edit-card { display: grid; gap: 10px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: rgba(8,17,31,.5); }
 .player-fields { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
