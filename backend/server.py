@@ -243,7 +243,7 @@ def clean_label(value, fallback, maximum=32):
 
 
 class QuizHandler(BaseHTTPRequestHandler):
-    server_version = "GDBGCQuiz/6.0"
+    server_version = "GDBGCQuiz/7.0"
 
     def log_message(self, message, *args):
         print(f"{self.address_string()} - {message % args}", flush=True)
@@ -295,7 +295,7 @@ class QuizHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/health":
-            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 6, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
+            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 7, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
         elif path == "/api/game":
             with LOCK:
                 self.send_json(200, public_game())
@@ -343,6 +343,8 @@ class QuizHandler(BaseHTTPRequestHandler):
             with LOCK:
                 if path == "/api/host/teams":
                     self.update_teams(payload)
+                elif path == "/api/host/players/randomize":
+                    self.randomize_players()
                 elif path == "/api/host/test/start":
                     self.start_test()
                 elif path == "/api/host/test/score":
@@ -453,6 +455,27 @@ class QuizHandler(BaseHTTPRequestHandler):
             for seat, player in enumerate(cleaned_players):
                 if not player or player != old_players[seat]:
                     tokens[seat] = ""
+
+    def randomize_players(self):
+        if GAME["phase"] != "lobby":
+            raise ValueError("Players can only be randomized from the lobby")
+        players = [
+            (player, team["playerTokens"][player_index])
+            for team in GAME["teams"]
+            for player_index, player in enumerate(team["players"])
+            if player
+        ]
+        if len(players) < 2:
+            raise ValueError("At least two players are required to randomize teams")
+        random.shuffle(players)
+        for team in GAME["teams"]:
+            team["players"] = ["", "", "", ""]
+            team["playerTokens"] = ["", "", "", ""]
+        for index, (player, token) in enumerate(players):
+            team = GAME["teams"][index % 4]
+            seat = index // 4
+            team["players"][seat] = player
+            team["playerTokens"][seat] = token
 
     def start_test(self):
         if GAME["phase"] not in {"lobby", "test_result"}:

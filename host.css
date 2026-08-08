@@ -49,6 +49,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .test-success { background: rgba(255,180,84,.1); color: var(--accent); }
 .test-failure { background: rgba(255,135,150,.1); color: var(--danger); }
 .team-editor { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+.roster-actions { display: flex; flex-wrap: wrap; gap: 9px; justify-content: flex-end; }
 .team-edit-card { display: grid; gap: 10px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: rgba(8,17,31,.5); }
 .player-fields { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .points-editor { display: grid; gap: 10px; margin-top: 18px; }

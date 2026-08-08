@@ -409,6 +409,11 @@ element('save-teams').addEventListener('click', async () => {
   await post('/api/host/teams', { teams });
 });
 
+element('randomize-players').addEventListener('click', async () => {
+  if (!confirm('Randomize all joined players across the four teams?')) return;
+  await post('/api/host/players/randomize', {});
+});
+
 element('reset-button').addEventListener('click', async () => {
   if (!confirm('Reset all players, scores, wagers, captains, and progress?')) return;
   await post('/api/host/reset', { confirmation: 'RESET' });
