@@ -43,7 +43,14 @@
 
           <section id="host-live-question" class="card host-live-question hidden" aria-live="polite">
             <div><span id="host-live-question-label" class="eyebrow"></span><p id="host-live-question-text"></p></div>
-            <div class="host-live-answer"><span>Answer</span><strong id="host-live-answer-text"></strong></div>
+            <div class="host-live-answer">
+              <span>Intended answer</span>
+              <strong id="host-live-answer-text">Hidden until revealed</strong>
+              <div class="host-question-actions">
+                <button id="reveal-answer-button" class="button button-secondary" type="button">Reveal answer</button>
+                <button id="host-next-question" class="button button-primary" type="button">Next question</button>
+              </div>
+            </div>
           </section>
 
           <nav class="host-view-tabs" aria-label="Host information panels">

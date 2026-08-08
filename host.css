@@ -25,6 +25,9 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .host-live-answer { display: grid; gap: 5px; padding-left: 18px; border-left: 1px solid var(--line); }
 .host-live-answer span { color: var(--muted); font-size: .65rem; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
 .host-live-answer strong { color: var(--accent); }
+.host-live-answer .answer-concealed { color: var(--muted); font-style: italic; font-weight: 600; }
+.host-question-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 7px; }
+.host-question-actions .button { min-height: 38px; padding: 0 12px; font-size: .72rem; }
 .host-view-tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 9px; margin-bottom: 18px; }
 .host-view-tabs button { display: flex; gap: 8px; align-items: center; justify-content: center; min-height: 48px; border: 2px solid var(--line); border-radius: 10px; background: #0b2547; color: var(--muted); box-shadow: 3px 3px 0 rgba(2,10,25,.55); font-weight: 850; }
 .host-view-tabs button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: #17213a; }
@@ -100,6 +103,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
   .host-view-tabs button { display: grid; gap: 1px; min-height: 48px; padding: 5px 2px; font-size: .64rem; }
   .host-live-question { top: 5px; grid-template-columns: 1fr; gap: 10px; padding: 16px; }
   .host-live-answer { padding: 9px 0 0; border-top: 1px solid var(--line); border-left: 0; }
+  .host-question-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .team-editor, .captain-grid, .wager-grid, .result-grid, .host-bets-view { grid-template-columns: 1fr; }
   .section-heading { align-items: stretch; flex-direction: column; }
   .header-actions { gap: 8px; }

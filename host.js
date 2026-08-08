@@ -1,4 +1,4 @@
-const state = { apiBase: '', token: localStorage.getItem('gdbgc-host-token') || '', game: null, timer: null, questionFilter: 'all', activePanel: null };
+const state = { apiBase: '', token: localStorage.getItem('gdbgc-host-token') || '', game: null, timer: null, questionFilter: 'all', activePanel: null, revealedAnswerFor: null };
 const element = (id) => document.getElementById(id);
 
 function setConnection(kind, label) {
@@ -129,9 +129,16 @@ function renderHostLiveQuestion(game) {
   const panel = element('host-live-question');
   panel.classList.toggle('hidden', !game.question);
   if (!game.question) return;
+  const answerRevealed = state.revealedAnswerFor === game.question.number;
   element('host-live-question-label').textContent = `Question ${game.question.number} · ${game.category.name}`;
   element('host-live-question-text').textContent = game.question.prompt;
-  element('host-live-answer-text').textContent = game.question.answer || 'Not provided yet';
+  element('host-live-answer-text').textContent = answerRevealed ? (game.question.answer || 'Not provided yet') : 'Hidden until revealed';
+  element('host-live-answer-text').classList.toggle('answer-concealed', !answerRevealed);
+  element('reveal-answer-button').textContent = answerRevealed ? 'Hide answer' : 'Reveal answer';
+  const next = element('host-next-question');
+  next.disabled = game.phase !== 'results';
+  next.textContent = game.questionNumber % 10 === 0 ? 'Finish category' : 'Next question';
+  next.title = game.phase === 'results' ? '' : 'Score the question before continuing';
 }
 
 function renderHostPanels() {
@@ -327,8 +334,9 @@ function renderResults(game, controls) {
     text.textContent = team.correct ? `Correct · +${team.bet}` : 'Incorrect · +0';
     grid.append(teamCard(team, text));
   }
-  const nextLabel = game.questionNumber % 10 === 0 ? 'Finish category and draw new captains' : 'Move to next question';
-  controls.append(grid, actionButton(nextLabel, () => post('/api/host/question/next', {})));
+  const help = document.createElement('p'); help.className = 'helper';
+  help.textContent = 'Use the Next question button in the pinned question card when you are ready to continue.';
+  controls.append(grid, help);
 }
 
 function actionButton(label, handler, extraClass = '') {
@@ -422,6 +430,17 @@ element('reset-button').addEventListener('click', async () => {
 element('question-category-filter').addEventListener('change', (event) => {
   state.questionFilter = event.target.value;
   if (state.game) renderQuestionBank(state.game);
+});
+
+element('reveal-answer-button').addEventListener('click', () => {
+  if (!state.game?.question) return;
+  state.revealedAnswerFor = state.revealedAnswerFor === state.game.question.number ? null : state.game.question.number;
+  renderHostLiveQuestion(state.game);
+});
+
+element('host-next-question').addEventListener('click', async () => {
+  if (state.game?.phase !== 'results') return;
+  await post('/api/host/question/next', {});
 });
 
 document.querySelectorAll('[data-host-panel]').forEach((button) => button.addEventListener('click', () => {
