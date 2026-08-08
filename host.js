@@ -1,4 +1,4 @@
-const state = { apiBase: '', token: localStorage.getItem('gdbgc-host-token') || '', game: null, timer: null, questionFilter: 'all' };
+const state = { apiBase: '', token: localStorage.getItem('gdbgc-host-token') || '', game: null, timer: null, questionFilter: 'all', activePanel: null };
 const element = (id) => document.getElementById(id);
 
 function setConnection(kind, label) {
@@ -119,7 +119,24 @@ function render() {
   renderRound(game);
   renderTeams(game);
   renderPoints(game);
+  renderHostBets(game);
   renderQuestionBank(game);
+  renderHostLiveQuestion(game);
+  renderHostPanels();
+}
+
+function renderHostLiveQuestion(game) {
+  const panel = element('host-live-question');
+  panel.classList.toggle('hidden', !game.question);
+  if (!game.question) return;
+  element('host-live-question-label').textContent = `Question ${game.question.number} · ${game.category.name}`;
+  element('host-live-question-text').textContent = game.question.prompt;
+  element('host-live-answer-text').textContent = game.question.answer || 'Not provided yet';
+}
+
+function renderHostPanels() {
+  document.querySelectorAll('[data-host-panel]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.hostPanel === state.activePanel)));
+  document.querySelectorAll('[data-host-section]').forEach((section) => section.classList.toggle('hidden', section.dataset.hostSection !== state.activePanel));
 }
 
 function teamCard(team, content) {
@@ -285,7 +302,6 @@ function renderQuestionBank(game) {
 }
 
 function renderScoring(game, controls) {
-  controls.append(questionPreview(game));
   const help = document.createElement('p'); help.className = 'helper';
   help.textContent = 'Choose a verdict for every team. A correct answer earns the locked wager; an incorrect answer earns zero.';
   const grid = document.createElement('div'); grid.className = 'result-grid';
@@ -305,7 +321,6 @@ function renderScoring(game, controls) {
 }
 
 function renderResults(game, controls) {
-  controls.append(questionPreview(game));
   const grid = document.createElement('div'); grid.className = 'result-grid';
   for (const team of game.teams) {
     const text = document.createElement('span'); text.className = team.correct ? 'result-correct' : 'result-wrong';
@@ -354,6 +369,22 @@ function renderPoints(game) {
   }));
 }
 
+function renderHostBets(game) {
+  element('host-bets-view').replaceChildren(...game.teams.map((team) => {
+    const row = document.createElement('article'); row.className = 'host-bet-row';
+    const heading = document.createElement('div');
+    const name = document.createElement('strong'); name.textContent = team.name;
+    const captain = document.createElement('small'); captain.textContent = team.captain?.name ? `Captain: ${team.captain.name}` : 'No captain selected';
+    heading.append(name, captain);
+    const current = document.createElement('b');
+    const wager = game.pendingBets[team.id] ?? team.bet;
+    current.textContent = wager === undefined ? 'No wager' : `Wager ${wager}`;
+    const used = document.createElement('p');
+    used.textContent = team.usedWagers.length ? `Used: ${team.usedWagers.join(', ')}` : 'No used numbers';
+    row.append(heading, current, used); return row;
+  }));
+}
+
 element('login-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   state.token = element('host-token').value.trim();
@@ -387,5 +418,10 @@ element('question-category-filter').addEventListener('change', (event) => {
   state.questionFilter = event.target.value;
   if (state.game) renderQuestionBank(state.game);
 });
+
+document.querySelectorAll('[data-host-panel]').forEach((button) => button.addEventListener('click', () => {
+  state.activePanel = state.activePanel === button.dataset.hostPanel ? null : button.dataset.hostPanel;
+  renderHostPanels();
+}));
 
 connect();

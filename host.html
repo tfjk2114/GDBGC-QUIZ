@@ -41,23 +41,34 @@
 
           <div id="host-message" class="host-message hidden" role="status"></div>
 
+          <section id="host-live-question" class="card host-live-question hidden" aria-live="polite">
+            <div><span id="host-live-question-label" class="eyebrow"></span><p id="host-live-question-text"></p></div>
+            <div class="host-live-answer"><span>Answer</span><strong id="host-live-answer-text"></strong></div>
+          </section>
+
+          <nav class="host-view-tabs" aria-label="Host information panels">
+            <button type="button" data-host-panel="points" aria-pressed="false">🏆 <span>Points</span></button>
+            <button type="button" data-host-panel="bets" aria-pressed="false">🎲 <span>Wagers</span></button>
+            <button type="button" data-host-panel="roster" aria-pressed="false">👥 <span>Roster</span></button>
+            <button type="button" data-host-panel="questions" aria-pressed="false">❓ <span>Questions</span></button>
+            <button type="button" data-host-panel="settings" aria-pressed="false">⚙️ <span>Settings</span></button>
+          </nav>
+
           <section class="host-grid">
             <div class="host-main">
-              <section class="card control-card">
+              <section class="card control-card round-control-card">
                 <div class="section-heading"><div><p class="eyebrow">Round controls</p><h2 id="round-title"></h2></div><span id="phase-badge" class="phase-badge"></span></div>
                 <div id="round-controls"></div>
               </section>
 
-              <section class="card control-card">
+              <section class="card control-card host-detail-panel hidden" data-host-section="roster">
                 <div class="section-heading"><div><p class="eyebrow">Roster</p><h2>Four teams of four</h2></div><button id="save-teams" class="button button-primary" type="button">Save teams</button></div>
                 <p id="roster-count" class="helper"></p>
                 <div id="team-editor" class="team-editor"></div>
               </section>
-            </div>
 
-            <aside class="host-sidebar">
-              <section class="card question-bank-card">
-                <details id="question-bank-menu">
+              <section class="card question-bank-card host-detail-panel hidden" data-host-section="questions">
+                <details id="question-bank-menu" open>
                   <summary><span><span class="eyebrow">Host reference</span><strong>Question bank</strong></span><span id="question-bank-count" class="question-bank-count">100</span></summary>
                   <p class="helper">Answers written in square brackets are visible only here.</p>
                   <label class="question-bank-filter"><span>Category</span><select id="question-category-filter"><option value="all">All 100 questions</option></select></label>
@@ -65,20 +76,27 @@
                 </details>
               </section>
 
-              <section class="card control-card">
+              <section class="card control-card host-detail-panel hidden" data-host-section="points">
                 <p class="eyebrow">Manual override</p>
                 <h2>Edit points</h2>
                 <p class="helper">Set any team’s total at any time.</p>
                 <div id="points-editor" class="points-editor"></div>
               </section>
 
-              <section class="card control-card danger-zone">
+              <section class="card control-card host-detail-panel hidden" data-host-section="bets">
+                <p class="eyebrow">Round overview</p>
+                <h2>Team wagers</h2>
+                <p class="helper">See every team’s current wager and its used-number history.</p>
+                <div id="host-bets-view" class="host-bets-view"></div>
+              </section>
+
+              <section class="card control-card danger-zone host-detail-panel hidden" data-host-section="settings">
                 <p class="eyebrow">Danger zone</p>
                 <h2>Reset game</h2>
                 <p class="helper">Keeps team names, but removes players and clears scores, wagers, captains, and progress.</p>
                 <button id="reset-button" class="button button-danger" type="button">Reset entire game</button>
               </section>
-            </aside>
+            </div>
           </section>
         </div>
       </main>

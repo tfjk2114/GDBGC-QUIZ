@@ -3,7 +3,9 @@ const state = {
   token: localStorage.getItem('gdbgc-player-token') || '',
   player: null,
   game: null,
-  timer: null
+  timer: null,
+  activePanel: null,
+  betPanelOpen: false
 };
 const element = (id) => document.getElementById(id);
 const bgTeamName = (name) => name.replace(/^Team (\d+)$/, 'Отбор $1');
@@ -138,27 +140,26 @@ function renderGame() {
 
 function renderCaptainPanel(game) {
   const panel = element('captain-panel');
-  const visible = game.phase === 'betting' && state.player?.isCaptain;
-  panel.classList.toggle('hidden', !visible);
-  if (!visible) return;
+  const action = element('captain-action');
+  const available = game.phase === 'betting' && state.player?.isCaptain;
+  if (!available) state.betPanelOpen = false;
+  action.classList.toggle('hidden', !available);
+  panel.classList.toggle('hidden', !available || !state.betPanelOpen);
+  if (!available) return;
 
   const used = new Set(state.player.usedWagers || []);
   const selected = state.player.pendingBet;
   element('captain-wager-status').textContent = selected ? `Избран залог: ${selected}` : 'Няма избран залог';
+  element('captain-button-status').textContent = selected ? `Текущ залог: ${selected}` : `${100 - used.size} свободни числа`;
   const buttons = [];
   for (let number = 1; number <= 100; number += 1) {
+    if (used.has(number)) continue;
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'wager-number';
     button.textContent = number;
-    if (used.has(number)) {
-      button.disabled = true;
-      button.classList.add('used');
-      button.title = 'Този залог вече е използван';
-    } else {
-      if (selected === number) button.classList.add('selected');
-      button.addEventListener('click', () => submitCaptainWager(number, button));
-    }
+    if (selected === number) button.classList.add('selected');
+    button.addEventListener('click', () => submitCaptainWager(number, button));
     buttons.push(button);
   }
   element('captain-number-grid').replaceChildren(...buttons);
@@ -171,6 +172,7 @@ async function submitCaptainWager(wager, button) {
     state.game = response.game;
     state.player.pendingBet = response.wager;
     state.player.usedWagers = response.usedWagers;
+    state.betPanelOpen = false;
     renderGame();
   } catch (error) {
     alert(error.message);
@@ -205,6 +207,37 @@ function renderStage(game) {
 }
 
 function renderTeams(game) {
+  const grid = element('team-grid');
+  document.querySelectorAll('[data-player-panel]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.playerPanel === state.activePanel)));
+  grid.classList.toggle('hidden', !state.activePanel);
+  if (!state.activePanel) return;
+
+  if (state.activePanel === 'points') {
+    const sorted = [...game.teams].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, 'bg'));
+    grid.replaceChildren(...sorted.map((team, index) => {
+      const card = document.createElement('article'); card.className = `card info-card team-${game.teams.indexOf(team) + 1}`;
+      const place = document.createElement('span'); place.className = 'info-rank'; place.textContent = `${index + 1}`;
+      const name = document.createElement('strong'); name.textContent = bgTeamName(team.name);
+      const points = document.createElement('b'); points.textContent = `${team.points} т.`;
+      card.append(place, name, points); return card;
+    }));
+    return;
+  }
+
+  if (state.activePanel === 'bets') {
+    grid.replaceChildren(...game.teams.map((team, index) => {
+      const card = document.createElement('article'); card.className = `card info-card bet-info-card team-${index + 1}`;
+      const name = document.createElement('strong'); name.textContent = bgTeamName(team.name);
+      const wager = document.createElement('b');
+      if (team.bet !== undefined) wager.textContent = `Залог: ${team.bet}`;
+      else if (game.phase === 'betting') wager.textContent = team.hasPendingBet ? 'Залогът е подаден' : 'Чака залог';
+      else wager.textContent = 'Няма активен залог';
+      const used = document.createElement('small'); used.textContent = `${team.usedWagerCount} използвани числа`;
+      card.append(name, wager, used); return card;
+    }));
+    return;
+  }
+
   const cards = game.teams.map((team, index) => {
     const card = document.createElement('article');
     card.className = `card team-card team-${index + 1}`;
@@ -250,7 +283,7 @@ function renderTeams(game) {
     card.append(top, captain, players, footer);
     return card;
   });
-  element('team-grid').replaceChildren(...cards);
+  grid.replaceChildren(...cards);
 }
 
 function renderLeaderboard(teams) {
@@ -307,4 +340,27 @@ element('leave-button').addEventListener('click', async () => {
 });
 
 element('retry-button').addEventListener('click', connect);
+
+document.querySelectorAll('[data-player-panel]').forEach((button) => button.addEventListener('click', () => {
+  state.activePanel = state.activePanel === button.dataset.playerPanel ? null : button.dataset.playerPanel;
+  if (state.game) renderTeams(state.game);
+}));
+
+element('captain-wager-button').addEventListener('click', () => {
+  state.betPanelOpen = true;
+  if (state.game) renderCaptainPanel(state.game);
+});
+
+element('captain-panel-close').addEventListener('click', () => {
+  state.betPanelOpen = false;
+  if (state.game) renderCaptainPanel(state.game);
+});
+
+element('captain-panel').addEventListener('click', (event) => {
+  if (event.target === element('captain-panel')) element('captain-panel-close').click();
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && state.betPanelOpen) element('captain-panel-close').click();
+});
 connect();

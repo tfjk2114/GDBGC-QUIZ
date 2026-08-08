@@ -68,26 +68,39 @@
 
           <div id="game-progress-track" class="progress-track" aria-hidden="true"><span id="game-progress"></span></div>
 
+          <section id="question-box" class="card question-box persistent-question hidden" aria-live="polite">
+            <span id="question-label"></span>
+            <p id="question-text"></p>
+          </section>
+
           <section id="stage-card" class="card stage-card" aria-live="polite">
             <p id="stage-kicker" class="eyebrow"></p>
             <h2 id="stage-title"></h2>
             <p id="stage-copy" class="lede"></p>
-            <div id="question-box" class="question-box hidden">
-              <span id="question-label"></span>
-              <p id="question-text"></p>
-            </div>
           </section>
 
-          <section id="captain-panel" class="card captain-panel hidden" aria-live="polite">
-            <div class="captain-panel-heading">
-              <div><p class="eyebrow">Капитански пулт</p><h2>Избери залога на отбора</h2></div>
-              <strong id="captain-wager-status">Няма избран залог</strong>
-            </div>
-            <p class="captain-help">Избери едно неизползвано число. Сивите числа вече са играни от твоя отбор.</p>
-            <div id="captain-number-grid" class="captain-number-grid" role="group" aria-label="Залог от 1 до 100"></div>
-          </section>
+          <div id="captain-action" class="captain-action hidden">
+            <button id="captain-wager-button" class="button captain-wager-button" type="button"><span aria-hidden="true">🎲</span><span><strong>Избери залог</strong><small id="captain-button-status">Отвори числата</small></span></button>
+          </div>
 
-          <section id="team-grid" class="team-grid" aria-label="Отбори"></section>
+          <div id="captain-panel" class="captain-panel-overlay hidden" aria-live="polite">
+            <section class="card captain-panel" role="dialog" aria-modal="true" aria-labelledby="captain-panel-title">
+              <div class="captain-panel-heading">
+                <div><p class="eyebrow">Капитански пулт</p><h2 id="captain-panel-title">Избери залога</h2></div>
+                <button id="captain-panel-close" class="panel-close" type="button" aria-label="Затвори">×</button>
+              </div>
+              <strong id="captain-wager-status" class="captain-wager-status">Няма избран залог</strong>
+              <p class="captain-help">Показани са само свободните числа. Всеки използван залог изчезва от списъка.</p>
+              <div id="captain-number-grid" class="captain-number-grid" role="group" aria-label="Свободни залози от 1 до 100"></div>
+            </section>
+          </div>
+
+          <nav class="game-info-tabs" aria-label="Информация за играта">
+            <button type="button" data-player-panel="points" aria-pressed="false">🏆 <span>Точки</span></button>
+            <button type="button" data-player-panel="bets" aria-pressed="false">🎲 <span>Залози</span></button>
+            <button type="button" data-player-panel="teams" aria-pressed="false">👥 <span>Отбори</span></button>
+          </nav>
+          <section id="team-grid" class="team-grid hidden" aria-label="Информация за играта"></section>
           <nav id="category-strip" class="category-strip" aria-label="Категории"></nav>
         </div>
       </main>
