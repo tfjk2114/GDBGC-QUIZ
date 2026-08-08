@@ -80,11 +80,14 @@ function enterWaitingRoom() {
 
 async function refresh() {
   try {
-    const game = await request('/api/game');
-    if (!state.game || game.version !== state.game.version) {
-      state.game = game;
-      renderGame();
-    }
+    const [game, player] = await Promise.all([
+      request('/api/game'),
+      request('/api/player/status', {}, true)
+    ]);
+    state.game = game;
+    state.player = player;
+    element('player-label').textContent = `${state.player.name} · ${state.player.teamName}`;
+    renderGame();
     setConnection('online', 'На живо');
   } catch (error) {
     goOffline(error);
@@ -125,9 +128,53 @@ function renderGame() {
     element('game-progress').style.width = `${Math.min(100, game.questionNumber)}%`;
   }
   renderStage(game);
+  renderCaptainPanel(game);
   renderTeams(game);
   renderLeaderboard(game.teams);
   if (!pregame) renderCategories(game);
+}
+
+function renderCaptainPanel(game) {
+  const panel = element('captain-panel');
+  const visible = game.phase === 'betting' && state.player?.isCaptain;
+  panel.classList.toggle('hidden', !visible);
+  if (!visible) return;
+
+  const used = new Set(state.player.usedWagers || []);
+  const selected = state.player.pendingBet;
+  element('captain-wager-status').textContent = selected ? `Избран залог: ${selected}` : 'Няма избран залог';
+  const buttons = [];
+  for (let number = 1; number <= 100; number += 1) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'wager-number';
+    button.textContent = number;
+    if (used.has(number)) {
+      button.disabled = true;
+      button.classList.add('used');
+      button.title = 'Този залог вече е използван';
+    } else {
+      if (selected === number) button.classList.add('selected');
+      button.addEventListener('click', () => submitCaptainWager(number, button));
+    }
+    buttons.push(button);
+  }
+  element('captain-number-grid').replaceChildren(...buttons);
+}
+
+async function submitCaptainWager(wager, button) {
+  button.disabled = true;
+  try {
+    const response = await request('/api/captain/wager', { method: 'POST', body: JSON.stringify({ wager }) }, true);
+    state.game = response.game;
+    state.player.pendingBet = response.wager;
+    state.player.usedWagers = response.usedWagers;
+    renderGame();
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function renderStage(game) {
@@ -184,6 +231,12 @@ function renderTeams(game) {
     footer.className = 'team-round';
     const used = document.createElement('span'); used.textContent = `${team.usedWagerCount}/100 използвани залога`;
     footer.append(used);
+    if (game.phase === 'betting') {
+      const readiness = document.createElement('strong');
+      readiness.className = team.hasPendingBet ? 'wager-ready' : 'wager-pending';
+      readiness.textContent = team.hasPendingBet ? 'Залогът е подаден' : 'Чака капитана';
+      footer.append(readiness);
+    }
     if (team.bet !== undefined) {
       const bet = document.createElement('strong'); bet.textContent = `Залог ${team.bet}`;
       if (game.phase === 'results') {

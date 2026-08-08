@@ -37,7 +37,7 @@ async function request(path, options = {}) {
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(body.error || `Грешка от сървъра (${response.status})`);
+    const error = new Error(body.error || `Server error (${response.status})`);
     error.status = response.status;
     throw error;
   }
@@ -46,18 +46,18 @@ async function request(path, options = {}) {
 
 async function connect() {
   clearInterval(state.timer);
-  setConnection('loading', 'Свързване');
+  setConnection('loading', 'Connecting');
   try {
     const response = await fetch(`api.json?ts=${Date.now()}`, { cache: 'no-store', signal: AbortSignal.timeout(7000) });
     const discovery = await response.json();
-    if (!discovery.online || !discovery.apiBase) throw new Error('WSL сървърът е офлайн.');
+    if (!discovery.online || !discovery.apiBase) throw new Error('The WSL backend is offline.');
     state.apiBase = discovery.apiBase.replace(/\/$/, '');
-    setConnection('online', 'Сървърът е онлайн');
+    setConnection('online', 'Backend online');
     if (!state.token) return showLogin();
     await refresh(true);
     state.timer = setInterval(() => refresh(false), 1200);
   } catch (error) {
-    setConnection('offline', 'Офлайн');
+    setConnection('offline', 'Offline');
     showLogin(error.message);
   }
 }
@@ -74,9 +74,9 @@ async function refresh(forceRender) {
     if (error.status === 401) {
       localStorage.removeItem('gdbgc-host-token');
       state.token = '';
-      showLogin('Ключът за водещия не е валиден.');
+      showLogin('That host access key is not valid.');
     } else {
-      setConnection('offline', 'Връзката е прекъсната');
+      setConnection('offline', 'Connection lost');
       message(error.message, true);
     }
   }
@@ -86,7 +86,7 @@ async function post(path, payload) {
   try {
     state.game = await request(path, { method: 'POST', body: JSON.stringify(payload) });
     render();
-    message('Промяната е запазена и изпратена към екраните на играчите.');
+    message('Saved and broadcast to the player screens.');
     return true;
   } catch (error) {
     message(error.message, true);
@@ -103,19 +103,19 @@ function render() {
   const pregame = isPregame(game.phase);
   element('host-question-counter').classList.toggle('hidden', pregame);
   if (pregame) {
-    element('host-kicker').textContent = `${game.playerCount} от 16 играчи са се присъединили`;
-    element('host-title').textContent = 'Игрално фоайе';
+    element('host-kicker').textContent = `${game.playerCount} of 16 players joined`;
+    element('host-title').textContent = 'Game lobby';
   } else {
-    element('host-kicker').textContent = `${game.category.name} · Въпроси ${game.category.start}–${game.category.end}`;
-    element('host-title').textContent = game.phase === 'finished' ? 'Финално класиране' : game.category.name;
+    element('host-kicker').textContent = `${game.category.name} · Questions ${game.category.start}–${game.category.end}`;
+    element('host-title').textContent = game.phase === 'finished' ? 'Final standings' : game.category.name;
     element('host-question').textContent = game.questionNumber;
   }
   const phaseNames = {
-    lobby: 'фоайе', test_question: 'тестов въпрос', test_result: 'тест завършен', category_start: 'нова категория',
-    betting: 'залози', question: 'въпрос', results: 'резултати', finished: 'край'
+    lobby: 'lobby', test_question: 'test question', test_result: 'test complete', category_start: 'new category',
+    betting: 'wagers', question: 'question', results: 'results', finished: 'finished'
   };
   element('phase-badge').textContent = phaseNames[game.phase] || game.phase;
-  element('roster-count').textContent = `${game.playerCount}/16 заети места. Новите играчи се разпределят автоматично между отборите.`;
+  element('roster-count').textContent = `${game.playerCount}/16 seats filled. New players are distributed automatically across the teams.`;
   renderRound(game);
   renderTeams(game);
   renderPoints(game);
@@ -133,18 +133,18 @@ function renderRound(game) {
   const controls = element('round-controls');
   controls.replaceChildren();
   const titleByPhase = {
-    lobby: 'Подготовка на играта', test_question: 'Проверка с един играч', test_result: 'Резултат от проверката',
-    category_start: 'Избор на нови капитани', betting: 'Събиране на залозите', question: 'Оценяване на отговорите',
-    results: 'Преглед на резултата', finished: 'Играта приключи'
+    lobby: 'Prepare the game', test_question: 'One-player system test', test_result: 'System test result',
+    category_start: 'Draw new captains', betting: 'Captain wagers', question: 'Judge the answers',
+    results: 'Review the result', finished: 'Game complete'
   };
-  element('round-title').textContent = titleByPhase[game.phase] || 'Управление на играта';
+  element('round-title').textContent = titleByPhase[game.phase] || 'Game control';
 
   if (game.phase === 'lobby') return renderLobby(game, controls);
   if (game.phase === 'test_question') return renderTestQuestion(game, controls);
   if (game.phase === 'test_result') return renderTestResult(game, controls);
   if (game.phase === 'category_start') {
-    controls.innerHTML = '<p class="helper">Системата ще избере на случаен принцип по един от четиримата играчи във всеки отбор за капитан на следващите десет въпроса.</p>';
-    controls.append(actionButton('Избери капитани и започни категорията', () => post('/api/host/category/start', {})));
+    controls.innerHTML = '<p class="helper">The system randomly selects one of the four players on every team as captain for the next ten questions.</p>';
+    controls.append(actionButton('Draw captains and start category', () => post('/api/host/category/start', {})));
     return;
   }
 
@@ -153,7 +153,7 @@ function renderRound(game) {
   captainGrid.replaceChildren(...game.teams.map((team) => {
     const text = document.createElement('span');
     text.className = 'captain-name';
-    text.textContent = team.captain?.name || 'Все още няма избор';
+    text.textContent = team.captain?.name || 'Not selected yet';
     return teamCard(team, text);
   }));
   controls.append(captainGrid);
@@ -164,7 +164,7 @@ function renderRound(game) {
   if (game.phase === 'finished') {
     const copy = document.createElement('p');
     copy.className = 'helper';
-    copy.textContent = 'Всички 100 въпроса приключиха. При нужда използвайте ръчната корекция на точки.';
+    copy.textContent = 'All 100 questions are complete. Use the manual score controls for any final adjustments.';
     controls.append(copy);
   }
 }
@@ -172,17 +172,17 @@ function renderRound(game) {
 function renderLobby(game, controls) {
   const copy = document.createElement('p');
   copy.className = 'helper';
-  copy.textContent = 'Играчите трябва да въведат имената си от публичния екран. Преди истинската викторина пуснете задължителния тест с един случаен играч и един въпрос.';
+  copy.textContent = 'Players join from the public screen. Before the real quiz, run the required one-player, one-question system test.';
   const status = document.createElement('div');
   status.className = 'lobby-status';
-  status.innerHTML = `<strong>${game.playerCount}/16 играчи</strong><span>${game.testCompleted ? '✓ Тестът е завършен' : 'Тестът още не е проведен'}</span>`;
+  status.innerHTML = `<strong>${game.playerCount}/16 players</strong><span>${game.testCompleted ? '✓ System test completed' : 'System test not run yet'}</span>`;
   const actions = document.createElement('div');
   actions.className = 'control-actions';
-  const testButton = actionButton('Пусни тест с един играч', () => post('/api/host/test/start', {}));
+  const testButton = actionButton('Run one-player system test', () => post('/api/host/test/start', {}));
   testButton.disabled = game.playerCount < 1;
   actions.append(testButton);
   if (game.testCompleted) {
-    const startButton = actionButton('Започни истинската викторина', () => post('/api/host/game/start', {}));
+    const startButton = actionButton('Start the real quiz', () => post('/api/host/game/start', {}));
     startButton.disabled = game.playerCount !== 16;
     actions.append(startButton);
   }
@@ -192,7 +192,7 @@ function renderLobby(game, controls) {
 function testPreview(test) {
   const box = document.createElement('div');
   box.className = 'question-preview';
-  const label = document.createElement('span'); label.className = 'eyebrow'; label.textContent = `Тест за ${test.playerName} · ${test.teamName}`;
+  const label = document.createElement('span'); label.className = 'eyebrow'; label.textContent = `Test for ${test.playerName} · ${test.teamName}`;
   const prompt = document.createElement('p'); prompt.textContent = test.prompt;
   box.append(label, prompt);
   return box;
@@ -201,11 +201,11 @@ function testPreview(test) {
 function renderTestQuestion(game, controls) {
   const copy = document.createElement('p');
   copy.className = 'helper';
-  copy.textContent = 'Само избраният играч отговаря. Този тест не променя точките.';
+  copy.textContent = 'Only the selected player answers. This test does not affect scores.';
   const actions = document.createElement('div'); actions.className = 'control-actions';
   actions.append(
-    actionButton('Верен отговор', () => post('/api/host/test/score', { correct: true })),
-    actionButton('Грешен отговор', () => post('/api/host/test/score', { correct: false }), 'button-danger')
+    actionButton('Correct answer', () => post('/api/host/test/score', { correct: true })),
+    actionButton('Incorrect answer', () => post('/api/host/test/score', { correct: false }), 'button-danger')
   );
   controls.append(copy, testPreview(game.test), actions);
 }
@@ -213,13 +213,13 @@ function renderTestQuestion(game, controls) {
 function renderTestResult(game, controls) {
   const result = document.createElement('p');
   result.className = game.test.result ? 'test-success' : 'test-failure';
-  result.textContent = game.test.result ? '✓ Тестовият отговор е отбелязан като верен.' : '× Тестовият отговор е отбелязан като грешен.';
+  result.textContent = game.test.result ? '✓ The test answer was marked correct.' : '× The test answer was marked incorrect.';
   const actions = document.createElement('div'); actions.className = 'control-actions';
   actions.append(
-    actionButton('Проведи теста отново', () => post('/api/host/test/start', {})),
-    actionButton('Върни се във фоайето', () => post('/api/host/test/reset', {}), 'button-secondary')
+    actionButton('Run the test again', () => post('/api/host/test/start', {})),
+    actionButton('Return to lobby', () => post('/api/host/test/reset', {}), 'button-secondary')
   );
-  const startButton = actionButton('Започни истинската викторина', () => post('/api/host/game/start', {}));
+  const startButton = actionButton('Start the real quiz', () => post('/api/host/game/start', {}));
   startButton.disabled = game.playerCount !== 16;
   actions.append(startButton);
   controls.append(testPreview(game.test), result, actions);
@@ -227,27 +227,26 @@ function renderTestResult(game, controls) {
 
 function renderBetting(game, controls) {
   const help = document.createElement('p'); help.className = 'helper';
-  help.textContent = 'Въведете по едно неизползвано цяло число от 1 до 100 за всеки отбор. Залозите се изразходват при показване на въпроса.';
+  help.textContent = 'Each captain chooses an unused number from their private panel. Reveal the question after all four wagers arrive.';
   const grid = document.createElement('div'); grid.className = 'wager-grid';
   for (const team of game.teams) {
     const wrapper = document.createElement('div');
-    const input = document.createElement('input');
-    input.type = 'number'; input.min = '1'; input.max = '100'; input.required = true; input.dataset.betTeam = team.id; input.placeholder = '1–100';
+    const submission = document.createElement('strong');
+    const pending = game.pendingBets[team.id];
+    submission.className = pending ? 'wager-submitted' : 'wager-waiting';
+    submission.textContent = pending ? `Submitted: ${pending}` : 'Waiting for captain…';
     const used = document.createElement('div'); used.className = 'used-wagers';
-    used.textContent = team.usedWagers.length ? `Използвани: ${team.usedWagers.join(', ')}` : 'Все още няма използвани залози';
-    wrapper.append(input, used); grid.append(teamCard(team, wrapper));
+    used.textContent = team.usedWagers.length ? `Used: ${team.usedWagers.join(', ')}` : 'No wagers used yet';
+    wrapper.append(submission, used); grid.append(teamCard(team, wrapper));
   }
-  const reveal = actionButton('Заключи залозите и покажи въпроса', async () => {
-    const bets = {};
-    document.querySelectorAll('[data-bet-team]').forEach((input) => { bets[input.dataset.betTeam] = Number(input.value); });
-    await post('/api/host/question/reveal', { bets });
-  });
+  const reveal = actionButton('Lock captain wagers and reveal question', () => post('/api/host/question/reveal', {}));
+  reveal.disabled = Object.keys(game.pendingBets).length !== 4;
   controls.append(help, grid, reveal);
 }
 
 function questionPreview(game) {
   const box = document.createElement('div'); box.className = 'question-preview';
-  const label = document.createElement('span'); label.className = 'eyebrow'; label.textContent = `Въпрос ${game.question.number}`;
+  const label = document.createElement('span'); label.className = 'eyebrow'; label.textContent = `Question ${game.question.number}`;
   const prompt = document.createElement('p'); prompt.textContent = game.question.prompt;
   box.append(label, prompt); return box;
 }
@@ -255,16 +254,16 @@ function questionPreview(game) {
 function renderScoring(game, controls) {
   controls.append(questionPreview(game));
   const help = document.createElement('p'); help.className = 'helper';
-  help.textContent = 'Изберете резултат за всеки отбор. Верният отговор печели заключения залог, а грешният носи нула точки.';
+  help.textContent = 'Choose a verdict for every team. A correct answer earns the locked wager; an incorrect answer earns zero.';
   const grid = document.createElement('div'); grid.className = 'result-grid';
   for (const team of game.teams) {
     const select = document.createElement('select'); select.dataset.resultTeam = team.id;
-    select.innerHTML = '<option value="">Изберете резултат…</option><option value="true">Верен</option><option value="false">Грешен</option>';
+    select.innerHTML = '<option value="">Choose verdict…</option><option value="true">Correct</option><option value="false">Incorrect</option>';
     const wrap = document.createElement('div');
-    const bet = document.createElement('small'); bet.textContent = `Залог: ${team.bet}`;
+    const bet = document.createElement('small'); bet.textContent = `Wager: ${team.bet}`;
     wrap.append(bet, select); grid.append(teamCard(team, wrap));
   }
-  const score = actionButton('Оцени въпроса', async () => {
+  const score = actionButton('Score question', async () => {
     const results = {};
     document.querySelectorAll('[data-result-team]').forEach((select) => { if (select.value !== '') results[select.dataset.resultTeam] = select.value === 'true'; });
     await post('/api/host/question/score', { results });
@@ -277,10 +276,10 @@ function renderResults(game, controls) {
   const grid = document.createElement('div'); grid.className = 'result-grid';
   for (const team of game.teams) {
     const text = document.createElement('span'); text.className = team.correct ? 'result-correct' : 'result-wrong';
-    text.textContent = team.correct ? `Верен · +${team.bet}` : 'Грешен · +0';
+    text.textContent = team.correct ? `Correct · +${team.bet}` : 'Incorrect · +0';
     grid.append(teamCard(team, text));
   }
-  const nextLabel = game.questionNumber % 10 === 0 ? 'Завърши категорията и избери нови капитани' : 'Премини към следващия въпрос';
+  const nextLabel = game.questionNumber % 10 === 0 ? 'Finish category and draw new captains' : 'Move to next question';
   controls.append(grid, actionButton(nextLabel, () => post('/api/host/question/next', {})));
 }
 
@@ -296,14 +295,14 @@ function renderTeams(game) {
   const cards = game.teams.map((team, teamIndex) => {
     const card = document.createElement('div'); card.className = 'team-edit-card';
     const teamName = document.createElement('input');
-    teamName.value = team.name; teamName.dataset.teamName = teamIndex; teamName.setAttribute('aria-label', `Име на отбор ${teamIndex + 1}`);
+    teamName.value = team.name; teamName.dataset.teamName = teamIndex; teamName.setAttribute('aria-label', `Team ${teamIndex + 1} name`);
     const players = document.createElement('div'); players.className = 'player-fields';
     for (let playerIndex = 0; playerIndex < 4; playerIndex += 1) {
       const input = document.createElement('input');
       input.value = team.players[playerIndex] || '';
-      input.placeholder = `Свободно място ${playerIndex + 1}`;
+      input.placeholder = `Open seat ${playerIndex + 1}`;
       input.dataset.teamPlayer = `${teamIndex}:${playerIndex}`;
-      input.setAttribute('aria-label', `${team.name}, играч ${playerIndex + 1}`);
+      input.setAttribute('aria-label', `${team.name}, player ${playerIndex + 1}`);
       players.append(input);
     }
     card.append(teamName, players); return card;
@@ -316,7 +315,7 @@ function renderPoints(game) {
     const row = document.createElement('div'); row.className = 'point-row';
     const name = document.createElement('span'); name.textContent = team.name;
     const input = document.createElement('input'); input.type = 'number'; input.value = team.points;
-    const button = document.createElement('button'); button.className = 'button button-primary'; button.textContent = 'Задай';
+    const button = document.createElement('button'); button.className = 'button button-primary'; button.textContent = 'Set';
     button.addEventListener('click', () => post('/api/host/points', { teamId: team.id, points: Number(input.value) }));
     row.append(name, input, button); return row;
   }));
@@ -347,7 +346,7 @@ element('save-teams').addEventListener('click', async () => {
 });
 
 element('reset-button').addEventListener('click', async () => {
-  if (!confirm('Да бъдат ли изтрити всички играчи, точки, залози, капитани и прогрес?')) return;
+  if (!confirm('Reset all players, scores, wagers, captains, and progress?')) return;
   await post('/api/host/reset', { confirmation: 'RESET' });
 });
 

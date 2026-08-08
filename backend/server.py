@@ -58,13 +58,14 @@ def default_teams():
 
 def default_game(teams=None):
     return {
-        "schemaVersion": 3,
+        "schemaVersion": 4,
         "version": 1,
         "phase": "lobby",
         "currentQuestionIndex": 0,
         "testCompleted": False,
         "test": None,
         "captains": {},
+        "pendingBets": {},
         "bets": {},
         "results": {},
         "teams": teams or default_teams(),
@@ -87,7 +88,7 @@ def atomic_json_write(path, payload):
 def load_game():
     try:
         game = json.loads(GAME_PATH.read_text(encoding="utf-8"))
-        if game.get("schemaVersion") != 3 or len(game.get("teams", [])) != 4:
+        if game.get("schemaVersion") != 4 or len(game.get("teams", [])) != 4:
             raise ValueError("Невалидна версия на играта")
         return game
     except (FileNotFoundError, json.JSONDecodeError, ValueError):
@@ -168,6 +169,8 @@ def public_game():
         }
         if phase in {"question", "results"}:
             team_view["bet"] = GAME["bets"].get(team["id"])
+        if phase == "betting":
+            team_view["hasPendingBet"] = team["id"] in GAME["pendingBets"]
         if phase == "results":
             team_view["correct"] = GAME["results"].get(team["id"])
         teams.append(team_view)
@@ -198,6 +201,7 @@ def host_game():
         for public_team in view["teams"]
     ]
     view["bets"] = GAME["bets"]
+    view["pendingBets"] = GAME["pendingBets"]
     view["results"] = GAME["results"]
     return view
 
@@ -213,7 +217,7 @@ def clean_label(value, fallback, maximum=32):
 
 
 class QuizHandler(BaseHTTPRequestHandler):
-    server_version = "GDBGCQuiz/3.0"
+    server_version = "GDBGCQuiz/4.0"
 
     def log_message(self, message, *args):
         print(f"{self.address_string()} - {message % args}", flush=True)
@@ -240,7 +244,7 @@ class QuizHandler(BaseHTTPRequestHandler):
     def read_json(self):
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0 or length > 65_536:
-            raise ValueError("Невалиден размер на заявката")
+            raise ValueError("Invalid request size")
         return json.loads(self.rfile.read(length))
 
     def is_host(self):
@@ -251,7 +255,7 @@ class QuizHandler(BaseHTTPRequestHandler):
     def require_host(self):
         if self.is_host():
             return True
-        self.send_json(401, {"error": "Невалиден ключ за водещия"})
+        self.send_json(401, {"error": "Invalid host access key"})
         return False
 
     def player_token(self):
@@ -265,7 +269,7 @@ class QuizHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/health":
-            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 3, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
+            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 4, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
         elif path == "/api/game":
             with LOCK:
                 self.send_json(200, public_game())
@@ -282,24 +286,29 @@ class QuizHandler(BaseHTTPRequestHandler):
                         "teamId": team["id"],
                         "teamName": team["name"],
                         "playerIndex": player_index,
+                        "isCaptain": GAME["captains"].get(team["id"]) == player_index,
+                        "usedWagers": team["usedWagers"],
+                        "pendingBet": GAME["pendingBets"].get(team["id"]),
                     })
         elif path == "/api/host/state":
             if self.require_host():
                 with LOCK:
                     self.send_json(200, host_game())
         else:
-            self.send_json(404, {"error": "Страницата не е намерена"})
+            self.send_json(404, {"error": "Not found"})
 
     def do_POST(self):
         path = urlparse(self.path).path
         try:
             payload = self.read_json()
-            if path in {"/api/players/join", "/api/players/leave"}:
+            if path in {"/api/players/join", "/api/players/leave", "/api/captain/wager"}:
                 with LOCK:
                     if path == "/api/players/join":
                         response = self.join_player(payload)
-                    else:
+                    elif path == "/api/players/leave":
                         response = self.leave_player()
+                    else:
+                        response = self.submit_captain_wager(payload)
                     save_game()
                     self.send_json(200, response)
                 return
@@ -329,7 +338,7 @@ class QuizHandler(BaseHTTPRequestHandler):
                 elif path == "/api/host/reset":
                     self.reset_game(payload)
                 else:
-                    self.send_json(404, {"error": "Страницата не е намерена"})
+                    self.send_json(404, {"error": "Not found"})
                     return
                 save_game()
                 self.send_json(200, host_game())
@@ -379,14 +388,36 @@ class QuizHandler(BaseHTTPRequestHandler):
         team["playerTokens"][player_index] = ""
         return {"left": True, "game": public_game()}
 
+    def submit_captain_wager(self, payload):
+        if GAME["phase"] != "betting":
+            raise ValueError("Залог може да се избира само преди показването на въпроса")
+        identity = find_player_by_token(self.player_token())
+        if not identity:
+            raise ValueError("Сесията на играча не е валидна")
+        team_index, player_index = identity
+        team = GAME["teams"][team_index]
+        if GAME["captains"].get(team["id"]) != player_index:
+            raise ValueError("Само капитанът може да избере залога на отбора")
+        wager = payload.get("wager")
+        if isinstance(wager, bool) or not isinstance(wager, int) or not 1 <= wager <= 100:
+            raise ValueError("Изберете цяло число от 1 до 100")
+        if wager in team["usedWagers"]:
+            raise ValueError(f"Вашият отбор вече използва {wager}")
+        GAME["pendingBets"][team["id"]] = wager
+        return {
+            "wager": wager,
+            "usedWagers": team["usedWagers"],
+            "game": public_game(),
+        }
+
     def update_teams(self, payload):
         teams = payload.get("teams")
         if not isinstance(teams, list) or len(teams) != 4:
-            raise ValueError("Необходими са точно четири отбора")
+            raise ValueError("Exactly four teams are required")
         for index, submitted in enumerate(teams):
             players = submitted.get("players")
             if not isinstance(players, list) or len(players) != 4:
-                raise ValueError("Всеки отбор трябва да има точно четири места")
+                raise ValueError("Every team requires exactly four seats")
             team = GAME["teams"][index]
             team["name"] = clean_label(submitted.get("name"), f"Отбор {index + 1}")
             old_players = team["players"]
@@ -399,7 +430,7 @@ class QuizHandler(BaseHTTPRequestHandler):
 
     def start_test(self):
         if GAME["phase"] not in {"lobby", "test_result"}:
-            raise ValueError("Първо завършете текущия тест")
+            raise ValueError("Finish the current test first")
         players = [
             (team_index, player_index, player)
             for team_index, team in enumerate(GAME["teams"])
@@ -407,7 +438,7 @@ class QuizHandler(BaseHTTPRequestHandler):
             if player
         ]
         if not players:
-            raise ValueError("Поне един играч трябва да се присъедини")
+            raise ValueError("At least one player must join")
         team_index, player_index, player = random.choice(players)
         team = GAME["teams"][team_index]
         GAME["test"] = {
@@ -422,56 +453,59 @@ class QuizHandler(BaseHTTPRequestHandler):
 
     def score_test(self, payload):
         if GAME["phase"] != "test_question" or not GAME.get("test"):
-            raise ValueError("Няма активен тестов въпрос")
+            raise ValueError("There is no active test question")
         result = payload.get("correct")
         if not isinstance(result, bool):
-            raise ValueError("Изберете верен или грешен отговор")
+            raise ValueError("Choose correct or incorrect")
         GAME["test"]["result"] = result
         GAME["testCompleted"] = True
         GAME["phase"] = "test_result"
 
     def reset_test(self):
         if GAME["phase"] not in {"test_question", "test_result"}:
-            raise ValueError("Няма активен тест")
+            raise ValueError("There is no active test")
         GAME["test"] = None
         GAME["phase"] = "lobby"
 
     def start_game(self):
         if GAME["phase"] not in {"lobby", "test_result"}:
-            raise ValueError("Играта не може да започне в този момент")
+            raise ValueError("The game cannot start right now")
         if not GAME["testCompleted"]:
-            raise ValueError("Първо завършете тестовия въпрос")
+            raise ValueError("Complete the system test first")
         if player_count() != 16:
-            raise ValueError("Всички 16 играчи трябва да се присъединят")
+            raise ValueError("All 16 players must join")
         GAME["captains"] = {team["id"]: random.randrange(4) for team in GAME["teams"]}
         GAME["test"] = None
+        GAME["pendingBets"] = {}
         GAME["bets"] = {}
         GAME["results"] = {}
         GAME["phase"] = "betting"
 
     def start_category(self):
         if GAME["phase"] not in {"category_start", "setup"}:
-            raise ValueError("Завършете текущия въпрос преди нова категория")
+            raise ValueError("Finish the current question before starting a new category")
         GAME["captains"] = {team["id"]: random.randrange(4) for team in GAME["teams"]}
+        GAME["pendingBets"] = {}
         GAME["bets"] = {}
         GAME["results"] = {}
         GAME["phase"] = "betting"
 
     def reveal_question(self, payload):
         if GAME["phase"] != "betting":
-            raise ValueError("Залозите могат да се заключат само преди въпроса")
-        submitted = payload.get("bets")
-        if not isinstance(submitted, dict):
-            raise ValueError("Необходим е залог за всеки отбор")
+            raise ValueError("Wagers can only be locked before the question")
+        submitted = GAME["pendingBets"]
+        if not isinstance(submitted, dict) or len(submitted) != 4:
+            raise ValueError("Wait for all four captains to submit a wager")
         bets = {}
         for team in GAME["teams"]:
             wager = submitted.get(team["id"])
             if isinstance(wager, bool) or not isinstance(wager, int) or not 1 <= wager <= 100:
-                raise ValueError(f"{team['name']} трябва да избере цяло число от 1 до 100")
+                raise ValueError(f"{team['name']} must choose a whole number from 1 to 100")
             if wager in team["usedWagers"]:
-                raise ValueError(f"{team['name']} вече използва {wager}")
+                raise ValueError(f"{team['name']} already used {wager}")
             bets[team["id"]] = wager
         GAME["bets"] = bets
+        GAME["pendingBets"] = {}
         for team in GAME["teams"]:
             team["usedWagers"].append(bets[team["id"]])
             team["usedWagers"].sort()
@@ -480,15 +514,15 @@ class QuizHandler(BaseHTTPRequestHandler):
 
     def score_question(self, payload):
         if GAME["phase"] != "question":
-            raise ValueError("Въпросът още не е готов за оценяване")
+            raise ValueError("The question is not ready to score")
         submitted = payload.get("results")
         if not isinstance(submitted, dict):
-            raise ValueError("Необходим е резултат за всеки отбор")
+            raise ValueError("A result is required for every team")
         results = {}
         for team in GAME["teams"]:
             result = submitted.get(team["id"])
             if not isinstance(result, bool):
-                raise ValueError(f"Изберете верен или грешен отговор за {team['name']}")
+                raise ValueError(f"Choose correct or incorrect for {team['name']}")
             results[team["id"]] = result
             if result:
                 team["points"] += GAME["bets"][team["id"]]
@@ -497,8 +531,9 @@ class QuizHandler(BaseHTTPRequestHandler):
 
     def next_question(self):
         if GAME["phase"] != "results":
-            raise ValueError("Оценете текущия въпрос преди да продължите")
+            raise ValueError("Score the current question before moving on")
         GAME["currentQuestionIndex"] += 1
+        GAME["pendingBets"] = {}
         GAME["bets"] = {}
         GAME["results"] = {}
         if GAME["currentQuestionIndex"] >= 100:
@@ -514,15 +549,15 @@ class QuizHandler(BaseHTTPRequestHandler):
         team_id = str(payload.get("teamId", ""))
         points = payload.get("points")
         if isinstance(points, bool) or not isinstance(points, int) or not -1_000_000 <= points <= 1_000_000:
-            raise ValueError("Точките трябва да са цяло число между -1 000 000 и 1 000 000")
+            raise ValueError("Points must be a whole number between -1,000,000 and 1,000,000")
         team = next((item for item in GAME["teams"] if item["id"] == team_id), None)
         if not team:
-            raise ValueError("Непознат отбор")
+            raise ValueError("Unknown team")
         team["points"] = points
 
     def reset_game(self, payload):
         if payload.get("confirmation") != "RESET":
-            raise ValueError("Необходимо е потвърждение за нулиране")
+            raise ValueError("Reset confirmation is required")
         teams = [
             {**team, "players": ["", "", "", ""], "playerTokens": ["", "", "", ""], "points": 0, "usedWagers": []}
             for team in GAME["teams"]
