@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data"
 GAME_PATH = DATA_DIR / "game.json"
+QUIZ_DATA_PATH = ROOT / "quiz-data.json"
 TOKEN_PATH = Path(os.getenv("GDBGC_HOST_TOKEN_PATH", "/var/lib/gdbgc-quiz/host-token"))
 HOST = os.getenv("GDBGC_HOST", "127.0.0.1")
 PORT = int(os.getenv("GDBGC_PORT", "4317"))
@@ -27,19 +28,23 @@ ALLOWED_ORIGINS = {
 LOCK = threading.RLock()
 STARTED_AT = time.monotonic()
 
-CATEGORIES = [
-    {"id": f"category-{index + 1}", "name": f"Category {index + 1}", "start": index * 10 + 1, "end": index * 10 + 10}
-    for index in range(10)
-]
-QUESTIONS = [
-    {
-        "id": f"question-{index + 1}",
-        "number": index + 1,
-        "categoryIndex": index // 10,
-        "prompt": f"Съдържанието на въпрос {index + 1} ще бъде добавено с финалните категории.",
-    }
-    for index in range(100)
-]
+def load_quiz_data():
+    payload = json.loads(QUIZ_DATA_PATH.read_text(encoding="utf-8"))
+    categories = payload.get("categories")
+    questions = payload.get("questions")
+    if not isinstance(categories, list) or len(categories) != 10:
+        raise ValueError("quiz-data.json must contain exactly 10 categories")
+    if not isinstance(questions, list) or len(questions) != 100:
+        raise ValueError("quiz-data.json must contain exactly 100 questions")
+    for index, question in enumerate(questions):
+        if question.get("number") != index + 1 or question.get("categoryIndex") != index // 10:
+            raise ValueError(f"Invalid ordering for question {index + 1}")
+        if not isinstance(question.get("media", []), list):
+            raise ValueError(f"Invalid media for question {index + 1}")
+    return categories, questions
+
+
+CATEGORIES, QUESTIONS = load_quiz_data()
 
 
 def default_teams():
@@ -141,6 +146,7 @@ def question_for_player(question):
         "categoryIndex": question["categoryIndex"],
         "prompt": prompt,
         "answer": answer,
+        "media": question.get("media", []),
     }
 
 
@@ -243,7 +249,7 @@ def clean_label(value, fallback, maximum=32):
 
 
 class QuizHandler(BaseHTTPRequestHandler):
-    server_version = "GDBGCQuiz/7.0"
+    server_version = "GDBGCQuiz/8.0"
 
     def log_message(self, message, *args):
         print(f"{self.address_string()} - {message % args}", flush=True)
@@ -295,7 +301,7 @@ class QuizHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/health":
-            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 7, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
+            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 8, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
         elif path == "/api/game":
             with LOCK:
                 self.send_json(200, public_game())

@@ -1,4 +1,4 @@
-const state = { apiBase: '', token: localStorage.getItem('gdbgc-host-token') || '', game: null, timer: null, questionFilter: 'all', activePanel: null, revealedAnswerFor: null };
+const state = { apiBase: '', token: localStorage.getItem('gdbgc-host-token') || '', game: null, timer: null, questionFilter: 'all', activePanel: null, revealedAnswerFor: null, browserQuestionNumber: null, browserAnswerRevealed: false };
 const element = (id) => document.getElementById(id);
 
 function setConnection(kind, label) {
@@ -128,10 +128,16 @@ function render() {
 function renderHostLiveQuestion(game) {
   const panel = element('host-live-question');
   panel.classList.toggle('hidden', !game.question);
-  if (!game.question) return;
+  if (!game.question) {
+    renderQuestionMedia(element('host-live-question-media'), []);
+    return;
+  }
   const answerRevealed = state.revealedAnswerFor === game.question.number;
   element('host-live-question-label').textContent = `Question ${game.question.number} · ${game.category.name}`;
-  element('host-live-question-text').textContent = game.question.prompt;
+  const questionText = element('host-live-question-text');
+  questionText.textContent = game.question.prompt || '';
+  questionText.classList.toggle('hidden', !game.question.prompt);
+  renderQuestionMedia(element('host-live-question-media'), game.question.media || []);
   element('host-live-answer-text').textContent = answerRevealed ? (game.question.answer || 'Not provided yet') : 'Hidden until revealed';
   element('host-live-answer-text').classList.toggle('answer-concealed', !answerRevealed);
   element('reveal-answer-button').textContent = answerRevealed ? 'Hide answer' : 'Reveal answer';
@@ -291,21 +297,58 @@ function renderQuestionBank(game) {
     });
   }
   filter.value = state.questionFilter;
-  const questions = (game.questionBank || []).filter((question) => state.questionFilter === 'all' || question.categoryIndex === Number(state.questionFilter));
-  element('question-bank-count').textContent = String(questions.length);
-  element('question-bank-list').replaceChildren(...questions.map((question) => {
-    const item = document.createElement('article');
-    const isCurrent = !isPregame(game.phase) && question.number === game.questionNumber;
-    const isComplete = question.number < game.questionNumber && !isPregame(game.phase);
-    item.className = `question-bank-item${isCurrent ? ' current' : ''}${isComplete ? ' complete' : ''}`;
-    const number = document.createElement('span'); number.className = 'question-bank-number'; number.textContent = String(question.number);
-    const copy = document.createElement('div');
-    const category = game.categories[question.categoryIndex];
-    const meta = document.createElement('small'); meta.textContent = category?.name || `Category ${question.categoryIndex + 1}`;
-    const prompt = document.createElement('p'); prompt.textContent = question.prompt;
-    const answer = document.createElement('strong'); answer.className = 'bank-answer'; answer.textContent = question.answer || 'Not provided yet';
-    copy.append(meta, prompt, answer); item.append(number, copy); return item;
+  const questions = filteredBrowserQuestions(game);
+  if (!questions.some((question) => question.number === state.browserQuestionNumber)) {
+    const active = questions.find((question) => question.number === game.questionNumber);
+    state.browserQuestionNumber = (active || questions[0])?.number || null;
+    state.browserAnswerRevealed = false;
+  }
+  const position = Math.max(0, questions.findIndex((question) => question.number === state.browserQuestionNumber));
+  const question = questions[position];
+  element('question-bank-count').textContent = question ? `${position + 1}/${questions.length}` : '0';
+  if (!question) return;
+  element('browser-question-number').textContent = String(question.number);
+  element('browser-question-category').textContent = game.categories[question.categoryIndex]?.name || `Category ${question.categoryIndex + 1}`;
+  const prompt = element('browser-question-text');
+  prompt.textContent = question.prompt || '';
+  prompt.classList.toggle('hidden', !question.prompt);
+  renderQuestionMedia(element('browser-question-media'), question.media || []);
+  const answer = element('browser-answer-text');
+  answer.textContent = state.browserAnswerRevealed ? (question.answer || 'No intended answer provided') : 'Hidden until revealed';
+  answer.classList.toggle('answer-concealed', !state.browserAnswerRevealed);
+  element('browser-reveal').textContent = state.browserAnswerRevealed ? 'Hide answer' : 'Reveal answer';
+  element('browser-previous').disabled = position === 0;
+  element('browser-next').disabled = position === questions.length - 1;
+}
+
+function filteredBrowserQuestions(game) {
+  return (game.questionBank || []).filter((question) => state.questionFilter === 'all' || question.categoryIndex === Number(state.questionFilter));
+}
+
+function moveBrowserQuestion(direction) {
+  const questions = filteredBrowserQuestions(state.game);
+  const position = questions.findIndex((question) => question.number === state.browserQuestionNumber);
+  const next = questions[position + direction];
+  if (!next) return;
+  state.browserQuestionNumber = next.number;
+  state.browserAnswerRevealed = false;
+  renderQuestionBank(state.game);
+}
+
+function renderQuestionMedia(container, media) {
+  const signature = JSON.stringify(media || []);
+  if (container.dataset.mediaSignature === signature) return;
+  container.dataset.mediaSignature = signature;
+  container.replaceChildren(...(media || []).map((item) => {
+    if (item.type === 'image') {
+      const image = document.createElement('img'); image.src = item.src; image.alt = item.alt || 'Question attachment'; return image;
+    }
+    if (item.type === 'audio') {
+      const audio = document.createElement('audio'); audio.src = item.src; audio.controls = true; audio.preload = 'metadata'; audio.setAttribute('aria-label', 'Question audio'); return audio;
+    }
+    const link = document.createElement('a'); link.href = item.src; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = item.label || 'Open question attachment'; return link;
   }));
+  container.classList.toggle('hidden', !(media || []).length);
 }
 
 function renderScoring(game, controls) {
@@ -429,6 +472,15 @@ element('reset-button').addEventListener('click', async () => {
 
 element('question-category-filter').addEventListener('change', (event) => {
   state.questionFilter = event.target.value;
+  state.browserQuestionNumber = null;
+  state.browserAnswerRevealed = false;
+  if (state.game) renderQuestionBank(state.game);
+});
+
+element('browser-previous').addEventListener('click', () => moveBrowserQuestion(-1));
+element('browser-next').addEventListener('click', () => moveBrowserQuestion(1));
+element('browser-reveal').addEventListener('click', () => {
+  state.browserAnswerRevealed = !state.browserAnswerRevealed;
   if (state.game) renderQuestionBank(state.game);
 });
 

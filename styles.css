@@ -68,6 +68,10 @@ h2 { font-size: clamp(1.7rem, 4vw, 2.8rem); }
 .question-box { max-width: 850px; margin: 30px auto 0; padding: 24px; border: 2px solid rgba(255,180,84,.38); border-radius: 12px; background: rgba(255,180,84,.08); }
 .question-box span { color: var(--accent); font-size: .8rem; font-weight: 900; text-transform: uppercase; }
 .question-box p { margin: 12px 0 0; font-size: clamp(1.25rem, 3vw, 2rem); font-weight: 750; line-height: 1.35; }
+.question-media { display: grid; gap: 10px; justify-items: center; margin-top: 16px; }
+.question-media img { display: block; max-width: 100%; max-height: min(45vh, 480px); border: 1px solid var(--line); border-radius: 10px; object-fit: contain; }
+.question-media audio { width: min(100%, 560px); accent-color: var(--accent); }
+.question-media a { display: inline-flex; min-height: 42px; padding: 9px 14px; align-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-strong); font-weight: 800; }
 .persistent-question { position: sticky; top: 10px; z-index: 15; max-width: none; margin: 0 0 18px; border-color: var(--pink); background: linear-gradient(135deg, rgba(16,47,87,.99), rgba(25,31,70,.99)); box-shadow: 6px 7px 0 rgba(2,10,25,.62), 0 18px 44px rgba(0,0,0,.35); text-align: left; }
 
 .captain-action { display: flex; justify-content: center; margin-top: 18px; }
@@ -142,6 +146,7 @@ footer { display: flex; flex-wrap: wrap; gap: 9px; justify-content: center; min-
   .question-counter strong { font-size: 1.6rem; }
   .persistent-question { top: 6px; padding: 17px; }
   .persistent-question p { font-size: 1.15rem; }
+  .persistent-question .question-media img { max-height: 34vh; }
   .stage-card { min-height: 0; padding: 22px 18px; }
   .stage-card .lede { margin-bottom: 0; font-size: .88rem; }
   .join-form { grid-template-columns: 1fr; }

@@ -186,7 +186,12 @@ function renderStage(game) {
   questionBox.classList.toggle('hidden', !visibleQuestion);
   if (visibleQuestion) {
     element('question-label').textContent = visibleQuestion.number === 'Тест' ? 'Тестов въпрос' : `Въпрос ${visibleQuestion.number}`;
-    element('question-text').textContent = visibleQuestion.prompt;
+    const questionText = element('question-text');
+    questionText.textContent = visibleQuestion.prompt || '';
+    questionText.classList.toggle('hidden', !visibleQuestion.prompt);
+    renderQuestionMedia(element('question-media'), visibleQuestion.media || []);
+  } else {
+    renderQuestionMedia(element('question-media'), []);
   }
 
   const copy = {
@@ -202,6 +207,30 @@ function renderStage(game) {
   element('stage-kicker').textContent = copy[0];
   element('stage-title').textContent = copy[1];
   element('stage-copy').textContent = copy[2];
+}
+
+function renderQuestionMedia(container, media) {
+  const signature = JSON.stringify(media || []);
+  if (container.dataset.mediaSignature === signature) return;
+  container.dataset.mediaSignature = signature;
+  container.replaceChildren(...(media || []).map((item) => {
+    if (item.type === 'image') {
+      const image = document.createElement('img');
+      image.src = item.src; image.alt = item.alt || 'Прикачено изображение към въпроса';
+      return image;
+    }
+    if (item.type === 'audio') {
+      const audio = document.createElement('audio');
+      audio.src = item.src; audio.controls = true; audio.preload = 'metadata';
+      audio.setAttribute('aria-label', 'Аудио към въпроса');
+      return audio;
+    }
+    const link = document.createElement('a');
+    link.href = item.src; link.target = '_blank'; link.rel = 'noopener noreferrer';
+    link.textContent = item.label || 'Отвори прикачения файл';
+    return link;
+  }));
+  container.classList.toggle('hidden', !(media || []).length);
 }
 
 function renderTeams(game) {

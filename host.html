@@ -42,7 +42,7 @@
           <div id="host-message" class="host-message hidden" role="status"></div>
 
           <section id="host-live-question" class="card host-live-question hidden" aria-live="polite">
-            <div><span id="host-live-question-label" class="eyebrow"></span><p id="host-live-question-text"></p></div>
+            <div><span id="host-live-question-label" class="eyebrow"></span><p id="host-live-question-text"></p><div id="host-live-question-media" class="question-media host-question-media"></div></div>
             <div class="host-live-answer">
               <span>Intended answer</span>
               <strong id="host-live-answer-text">Hidden until revealed</strong>
@@ -77,9 +77,19 @@
               <section class="card question-bank-card host-detail-panel hidden" data-host-section="questions">
                 <details id="question-bank-menu" open>
                   <summary><span><span class="eyebrow">Host reference</span><strong>Question bank</strong></span><span id="question-bank-count" class="question-bank-count">100</span></summary>
-                  <p class="helper">Answers written in square brackets are visible only here.</p>
+                  <p class="helper">Trailing parenthesized answers are kept private and revealed on demand.</p>
                   <label class="question-bank-filter"><span>Category</span><select id="question-category-filter"><option value="all">All 100 questions</option></select></label>
-                  <div id="question-bank-list" class="question-bank-list"></div>
+                  <article class="question-browser">
+                    <div class="question-browser-heading"><span id="browser-question-number" class="question-bank-number"></span><small id="browser-question-category"></small></div>
+                    <p id="browser-question-text"></p>
+                    <div id="browser-question-media" class="question-media host-question-media"></div>
+                    <div class="browser-answer"><span>Intended answer</span><strong id="browser-answer-text">Hidden until revealed</strong></div>
+                    <div class="question-browser-actions">
+                      <button id="browser-previous" class="button button-secondary" type="button">Previous</button>
+                      <button id="browser-reveal" class="button button-primary" type="button">Reveal answer</button>
+                      <button id="browser-next" class="button button-secondary" type="button">Next</button>
+                    </div>
+                  </article>
                 </details>
               </section>
 
