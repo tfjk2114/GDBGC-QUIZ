@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import ipaddress
 import os
 import queue
 import re
@@ -11,6 +12,7 @@ import time
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data"
@@ -38,6 +40,56 @@ def wait_for_health(url, timeout):
             last_error = str(error)
         time.sleep(0.6)
     raise RuntimeError(f"Health check failed for {url}: {last_error}")
+
+
+def wait_for_public_health(url, timeout):
+    """Verify the tunnel even when a local DNS forwarder caches an early NXDOMAIN."""
+    deadline = time.monotonic() + timeout
+    hostname = urlparse(url).hostname
+    last_error = ""
+    time.sleep(6)
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(f"{url}/health", timeout=4) as response:
+                if response.status == 200:
+                    return
+        except Exception as error:
+            last_error = str(error)
+
+        if hostname:
+            try:
+                lookup = subprocess.run(
+                    ["dig", "+short", "@1.1.1.1", hostname, "A"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    check=False,
+                )
+                addresses = []
+                for line in lookup.stdout.splitlines():
+                    candidate = line.strip()
+                    try:
+                        if ipaddress.ip_address(candidate).version == 4:
+                            addresses.append(candidate)
+                    except ValueError:
+                        continue
+                for address in addresses:
+                    check = subprocess.run(
+                        [
+                            "curl", "--fail", "--silent", "--show-error", "--max-time", "7",
+                            "--resolve", f"{hostname}:443:{address}", f"{url}/health",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                    if check.returncode == 0:
+                        return
+                    last_error = check.stderr.strip() or f"curl exited with {check.returncode}"
+            except (OSError, subprocess.SubprocessError) as error:
+                last_error = str(error)
+        time.sleep(1)
+    raise RuntimeError(f"Public health check failed for {url}: {last_error}")
 
 
 def write_discovery(online, api_base=""):
@@ -122,7 +174,7 @@ def main():
         public_url = url_queue.get(timeout=60)
     except queue.Empty as error:
         raise RuntimeError("Timed out waiting for a Cloudflare Quick Tunnel URL") from error
-    wait_for_health(public_url, 70)
+    wait_for_public_health(public_url, 70)
     write_discovery(True, public_url)
     publish("site: publish live WSL quiz backend")
     print(f"GDBGC Quiz is online:\n  App: https://tfjk2114.github.io/GDBGC-QUIZ/\n  API: {public_url}", flush=True)
