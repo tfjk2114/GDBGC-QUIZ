@@ -28,7 +28,7 @@ LOCK = threading.RLock()
 STARTED_AT = time.monotonic()
 
 CATEGORIES = [
-    {"id": f"category-{index + 1}", "name": f"Категория {index + 1}", "start": index * 10 + 1, "end": index * 10 + 10}
+    {"id": f"category-{index + 1}", "name": f"Category {index + 1}", "start": index * 10 + 1, "end": index * 10 + 10}
     for index in range(10)
 ]
 QUESTIONS = [
@@ -46,7 +46,7 @@ def default_teams():
     return [
         {
             "id": f"team-{index + 1}",
-            "name": f"Отбор {index + 1}",
+            "name": f"Team {index + 1}",
             "players": ["" for _ in range(4)],
             "playerTokens": ["" for _ in range(4)],
             "points": 0,
@@ -58,7 +58,7 @@ def default_teams():
 
 def default_game(teams=None):
     return {
-        "schemaVersion": 4,
+        "schemaVersion": 5,
         "version": 1,
         "phase": "lobby",
         "currentQuestionIndex": 0,
@@ -88,7 +88,7 @@ def atomic_json_write(path, payload):
 def load_game():
     try:
         game = json.loads(GAME_PATH.read_text(encoding="utf-8"))
-        if game.get("schemaVersion") != 4 or len(game.get("teams", [])) != 4:
+        if game.get("schemaVersion") != 5 or len(game.get("teams", [])) != 4:
             raise ValueError("Невалидна версия на играта")
         return game
     except (FileNotFoundError, json.JSONDecodeError, ValueError):
@@ -217,7 +217,7 @@ def clean_label(value, fallback, maximum=32):
 
 
 class QuizHandler(BaseHTTPRequestHandler):
-    server_version = "GDBGCQuiz/4.0"
+    server_version = "GDBGCQuiz/5.0"
 
     def log_message(self, message, *args):
         print(f"{self.address_string()} - {message % args}", flush=True)
@@ -269,7 +269,7 @@ class QuizHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/health":
-            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 4, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
+            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 5, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
         elif path == "/api/game":
             with LOCK:
                 self.send_json(200, public_game())
@@ -419,7 +419,7 @@ class QuizHandler(BaseHTTPRequestHandler):
             if not isinstance(players, list) or len(players) != 4:
                 raise ValueError("Every team requires exactly four seats")
             team = GAME["teams"][index]
-            team["name"] = clean_label(submitted.get("name"), f"Отбор {index + 1}")
+            team["name"] = clean_label(submitted.get("name"), f"Team {index + 1}")
             old_players = team["players"]
             cleaned_players = [clean_label(name, "", 28) for name in players]
             team["players"] = cleaned_players

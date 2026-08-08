@@ -6,6 +6,8 @@ const state = {
   timer: null
 };
 const element = (id) => document.getElementById(id);
+const bgTeamName = (name) => name.replace(/^Team (\d+)$/, 'Отбор $1');
+const bgCategoryName = (name) => name.replace(/^Category (\d+)$/, 'Категория $1');
 
 function setView(name) {
   for (const view of ['loading', 'offline', 'join', 'game']) {
@@ -70,7 +72,7 @@ function showJoin() {
 }
 
 function enterWaitingRoom() {
-  element('player-label').textContent = `${state.player.name} · ${state.player.teamName}`;
+  element('player-label').textContent = `${state.player.name} · ${bgTeamName(state.player.teamName)}`;
   element('player-identity').classList.remove('hidden');
   renderGame();
   setView('game');
@@ -86,7 +88,7 @@ async function refresh() {
     ]);
     state.game = game;
     state.player = player;
-    element('player-label').textContent = `${state.player.name} · ${state.player.teamName}`;
+    element('player-label').textContent = `${state.player.name} · ${bgTeamName(state.player.teamName)}`;
     renderGame();
     setConnection('online', 'На живо');
   } catch (error) {
@@ -122,8 +124,8 @@ function renderGame() {
     element('category-kicker').textContent = `${game.playerCount} от 16 играчи са готови`;
     element('category-name').textContent = 'Игрално фоайе';
   } else {
-    element('category-kicker').textContent = `${game.category.name} · Въпроси ${game.category.start}–${game.category.end}`;
-    element('category-name').textContent = game.category.name;
+    element('category-kicker').textContent = `${bgCategoryName(game.category.name)} · Въпроси ${game.category.start}–${game.category.end}`;
+    element('category-name').textContent = bgCategoryName(game.category.name);
     element('question-number').textContent = game.questionNumber;
     element('game-progress').style.width = `${Math.min(100, game.questionNumber)}%`;
   }
@@ -208,7 +210,7 @@ function renderTeams(game) {
     card.className = `card team-card team-${index + 1}`;
     const top = document.createElement('div');
     top.className = 'team-card-top';
-    const title = document.createElement('h3'); title.textContent = team.name;
+    const title = document.createElement('h3'); title.textContent = bgTeamName(team.name);
     const points = document.createElement('strong'); points.className = 'team-points'; points.textContent = `${team.points} т.`;
     top.append(title, points);
 
@@ -255,7 +257,7 @@ function renderLeaderboard(teams) {
   const sorted = [...teams].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, 'bg'));
   element('leaderboard-list').replaceChildren(...sorted.map((team) => {
     const row = document.createElement('li');
-    const name = document.createElement('span'); name.textContent = team.name;
+    const name = document.createElement('span'); name.textContent = bgTeamName(team.name);
     const points = document.createElement('strong'); points.textContent = team.points;
     row.append(name, points);
     return row;
@@ -267,7 +269,7 @@ function renderCategories(game) {
     const item = document.createElement('span');
     item.className = index < game.categoryIndex ? 'complete' : index === game.categoryIndex ? 'active' : '';
     item.textContent = index + 1;
-    item.title = category.name;
+    item.title = bgCategoryName(category.name);
     return item;
   }));
 }
