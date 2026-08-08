@@ -38,6 +38,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .round-team strong { display: block; margin-bottom: 6px; }
 .round-team small { color: var(--muted); }
 .round-team .captain-name { color: var(--accent); }
+.team-roles { display: grid; gap: 5px; }
 .question-preview { margin: 20px 0; padding: 22px; border: 1px solid rgba(114,184,255,.3); border-radius: 14px; background: rgba(114,184,255,.08); }
 .question-preview p { margin: 9px 0 0; font-size: 1.2rem; font-weight: 750; line-height: 1.4; }
 .question-answer { display: flex; gap: 8px; align-items: baseline; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }

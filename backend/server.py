@@ -61,11 +61,12 @@ def default_teams():
     ]
 
 
-def default_game(teams=None):
+def default_game(teams=None, game_mode="full"):
     return {
         "schemaVersion": 5,
         "version": 1,
         "phase": "lobby",
+        "gameMode": game_mode,
         "currentQuestionIndex": 0,
         "testCompleted": False,
         "test": None,
@@ -95,6 +96,7 @@ def load_game():
         game = json.loads(GAME_PATH.read_text(encoding="utf-8"))
         if game.get("schemaVersion") != 5 or len(game.get("teams", [])) != 4:
             raise ValueError("Невалидна версия на играта")
+        game.setdefault("gameMode", "full")
         return game
     except (FileNotFoundError, json.JSONDecodeError, ValueError):
         game = default_game()
@@ -161,6 +163,40 @@ def captain_for(team):
     return None
 
 
+def game_mode():
+    return GAME.get("gameMode", "full")
+
+
+def player_capacity():
+    return 2 if game_mode() == "duo" else 16
+
+
+def active_teams():
+    return GAME["teams"][:1] if game_mode() == "duo" else GAME["teams"]
+
+
+def answerer_for(team):
+    if game_mode() != "duo" or team["id"] != GAME["teams"][0]["id"]:
+        return None
+    captain_index = GAME["captains"].get(team["id"])
+    if not isinstance(captain_index, int):
+        return None
+    for player_index, player in enumerate(team["players"]):
+        if player and player_index != captain_index:
+            return {"playerIndex": player_index, "name": player}
+    return None
+
+
+def draw_captains():
+    captains = {}
+    for team in active_teams():
+        filled = [index for index, player in enumerate(team["players"]) if player]
+        if not filled:
+            raise ValueError(f"{team['name']} has no players")
+        captains[team["id"]] = random.choice(filled)
+    return captains
+
+
 def player_count():
     return sum(1 for team in GAME["teams"] for player in team["players"] if player)
 
@@ -187,7 +223,9 @@ def public_game():
     if question and phase in {"question", "results"}:
         visible_question = {key: value for key, value in question.items() if key != "answer"}
     teams = []
+    active_team_ids = {team["id"] for team in active_teams()}
     for team in GAME["teams"]:
+        is_active = team["id"] in active_team_ids
         team_view = {
             "id": team["id"],
             "name": team["name"],
@@ -195,6 +233,8 @@ def public_game():
             "points": team["points"],
             "usedWagerCount": len(team["usedWagers"]),
             "captain": captain_for(team),
+            "answerer": answerer_for(team),
+            "active": is_active,
         }
         if phase in {"question", "results"}:
             team_view["bet"] = GAME["bets"].get(team["id"])
@@ -212,7 +252,8 @@ def public_game():
         "category": CATEGORIES[current_category_index()],
         "question": visible_question,
         "playerCount": player_count(),
-        "playerCapacity": 16,
+        "playerCapacity": player_capacity(),
+        "gameMode": game_mode(),
         "testCompleted": GAME["testCompleted"],
         "test": GAME["test"] if phase in {"test_question", "test_result"} else None,
         "teams": teams,
@@ -249,7 +290,7 @@ def clean_label(value, fallback, maximum=32):
 
 
 class QuizHandler(BaseHTTPRequestHandler):
-    server_version = "GDBGCQuiz/8.0"
+    server_version = "GDBGCQuiz/9.0"
 
     def log_message(self, message, *args):
         print(f"{self.address_string()} - {message % args}", flush=True)
@@ -301,7 +342,7 @@ class QuizHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/health":
-            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 8, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
+            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 9, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
         elif path == "/api/game":
             with LOCK:
                 self.send_json(200, public_game())
@@ -319,6 +360,7 @@ class QuizHandler(BaseHTTPRequestHandler):
                         "teamName": team["name"],
                         "playerIndex": player_index,
                         "isCaptain": GAME["captains"].get(team["id"]) == player_index,
+                        "isAnswerer": answerer_for(team) is not None and answerer_for(team)["playerIndex"] == player_index,
                         "usedWagers": team["usedWagers"],
                         "pendingBet": GAME["pendingBets"].get(team["id"]),
                     })
@@ -349,6 +391,8 @@ class QuizHandler(BaseHTTPRequestHandler):
             with LOCK:
                 if path == "/api/host/teams":
                     self.update_teams(payload)
+                elif path == "/api/host/mode":
+                    self.set_game_mode(payload)
                 elif path == "/api/host/players/randomize":
                     self.randomize_players()
                 elif path == "/api/host/test/start":
@@ -388,16 +432,22 @@ class QuizHandler(BaseHTTPRequestHandler):
         existing_names = [player.casefold() for team in GAME["teams"] for player in team["players"] if player]
         if name.casefold() in existing_names:
             raise ValueError("Вече има играч с това име")
-        if player_count() >= 16:
-            raise ValueError("Всички 16 места вече са заети")
-        available = []
-        for team_index, team in enumerate(GAME["teams"]):
-            filled = sum(1 for player in team["players"] if player)
-            if filled < 4:
-                available.append((filled, team_index))
-        _, team_index = min(available)
-        team = GAME["teams"][team_index]
-        player_index = next(index for index, player in enumerate(team["players"]) if not player)
+        capacity = player_capacity()
+        if player_count() >= capacity:
+            raise ValueError(f"Всички {capacity} места вече са заети")
+        if game_mode() == "duo":
+            team = GAME["teams"][0]
+            player_index = next(index for index, player in enumerate(team["players"][:2]) if not player)
+            team_index = 0
+        else:
+            available = []
+            for team_index, team in enumerate(GAME["teams"]):
+                filled = sum(1 for player in team["players"] if player)
+                if filled < 4:
+                    available.append((filled, team_index))
+            _, team_index = min(available)
+            team = GAME["teams"][team_index]
+            player_index = next(index for index, player in enumerate(team["players"]) if not player)
         token = secrets.token_urlsafe(32)
         team["players"][player_index] = name
         team.setdefault("playerTokens", ["", "", "", ""])[player_index] = token_hash(token)
@@ -448,6 +498,15 @@ class QuizHandler(BaseHTTPRequestHandler):
         teams = payload.get("teams")
         if not isinstance(teams, list) or len(teams) != 4:
             raise ValueError("Exactly four teams are required")
+        if game_mode() == "duo":
+            submitted_count = sum(
+                1
+                for submitted in teams
+                for player in submitted.get("players", [])
+                if clean_label(player, "", 28)
+            )
+            if submitted_count > 2:
+                raise ValueError("Two-player practice mode allows exactly two player seats")
         for index, submitted in enumerate(teams):
             players = submitted.get("players")
             if not isinstance(players, list) or len(players) != 4:
@@ -461,6 +520,8 @@ class QuizHandler(BaseHTTPRequestHandler):
             for seat, player in enumerate(cleaned_players):
                 if not player or player != old_players[seat]:
                     tokens[seat] = ""
+        if game_mode() == "duo":
+            self.set_game_mode({"mode": "duo"})
 
     def randomize_players(self):
         if GAME["phase"] != "lobby":
@@ -478,17 +539,44 @@ class QuizHandler(BaseHTTPRequestHandler):
             team["players"] = ["", "", "", ""]
             team["playerTokens"] = ["", "", "", ""]
         for index, (player, token) in enumerate(players):
-            team = GAME["teams"][index % 4]
-            seat = index // 4
+            team = GAME["teams"][0] if game_mode() == "duo" else GAME["teams"][index % 4]
+            seat = index if game_mode() == "duo" else index // 4
             team["players"][seat] = player
             team["playerTokens"][seat] = token
+
+    def set_game_mode(self, payload):
+        if GAME["phase"] != "lobby":
+            raise ValueError("Game mode can only be changed from the lobby")
+        mode = payload.get("mode")
+        if mode not in {"full", "duo"}:
+            raise ValueError("Choose full or duo mode")
+        players = [
+            (player, team["playerTokens"][player_index])
+            for team in GAME["teams"]
+            for player_index, player in enumerate(team["players"])
+            if player
+        ]
+        if mode == "duo" and len(players) > 2:
+            raise ValueError("Two-player practice mode supports at most two joined players")
+        if mode == "duo":
+            for team in GAME["teams"]:
+                team["players"] = ["", "", "", ""]
+                team["playerTokens"] = ["", "", "", ""]
+            for player_index, (player, token) in enumerate(players):
+                GAME["teams"][0]["players"][player_index] = player
+                GAME["teams"][0]["playerTokens"][player_index] = token
+        GAME["gameMode"] = mode
+        GAME["captains"] = {}
+        GAME["pendingBets"] = {}
+        GAME["bets"] = {}
+        GAME["results"] = {}
 
     def start_test(self):
         if GAME["phase"] not in {"lobby", "test_result"}:
             raise ValueError("Finish the current test first")
         players = [
             (team_index, player_index, player)
-            for team_index, team in enumerate(GAME["teams"])
+            for team_index, team in enumerate(active_teams())
             for player_index, player in enumerate(team["players"])
             if player
         ]
@@ -527,9 +615,10 @@ class QuizHandler(BaseHTTPRequestHandler):
             raise ValueError("The game cannot start right now")
         if not GAME["testCompleted"]:
             raise ValueError("Complete the system test first")
-        if player_count() != 16:
-            raise ValueError("All 16 players must join")
-        GAME["captains"] = {team["id"]: random.randrange(4) for team in GAME["teams"]}
+        capacity = player_capacity()
+        if player_count() != capacity:
+            raise ValueError(f"All {capacity} players must join")
+        GAME["captains"] = draw_captains()
         GAME["test"] = None
         GAME["pendingBets"] = {}
         GAME["bets"] = {}
@@ -539,7 +628,7 @@ class QuizHandler(BaseHTTPRequestHandler):
     def start_category(self):
         if GAME["phase"] not in {"category_start", "setup"}:
             raise ValueError("Finish the current question before starting a new category")
-        GAME["captains"] = {team["id"]: random.randrange(4) for team in GAME["teams"]}
+        GAME["captains"] = draw_captains()
         GAME["pendingBets"] = {}
         GAME["bets"] = {}
         GAME["results"] = {}
@@ -549,10 +638,11 @@ class QuizHandler(BaseHTTPRequestHandler):
         if GAME["phase"] != "betting":
             raise ValueError("Wagers can only be locked before the question")
         submitted = GAME["pendingBets"]
-        if not isinstance(submitted, dict) or len(submitted) != 4:
-            raise ValueError("Wait for all four captains to submit a wager")
+        expected_teams = active_teams()
+        if not isinstance(submitted, dict) or len(submitted) != len(expected_teams):
+            raise ValueError(f"Wait for all {len(expected_teams)} captain wager(s)")
         bets = {}
-        for team in GAME["teams"]:
+        for team in expected_teams:
             wager = submitted.get(team["id"])
             if isinstance(wager, bool) or not isinstance(wager, int) or not 1 <= wager <= 100:
                 raise ValueError(f"{team['name']} must choose a whole number from 1 to 100")
@@ -561,7 +651,7 @@ class QuizHandler(BaseHTTPRequestHandler):
             bets[team["id"]] = wager
         GAME["bets"] = bets
         GAME["pendingBets"] = {}
-        for team in GAME["teams"]:
+        for team in expected_teams:
             team["usedWagers"].append(bets[team["id"]])
             team["usedWagers"].sort()
         GAME["results"] = {}
@@ -574,7 +664,7 @@ class QuizHandler(BaseHTTPRequestHandler):
         if not isinstance(submitted, dict):
             raise ValueError("A result is required for every team")
         results = {}
-        for team in GAME["teams"]:
+        for team in active_teams():
             result = submitted.get(team["id"])
             if not isinstance(result, bool):
                 raise ValueError(f"Choose correct or incorrect for {team['name']}")
@@ -618,7 +708,7 @@ class QuizHandler(BaseHTTPRequestHandler):
             for team in GAME["teams"]
         ]
         GAME.clear()
-        GAME.update(default_game(teams))
+        GAME.update(default_game(teams, game_mode()))
 
 
 if __name__ == "__main__":

@@ -68,12 +68,12 @@ async function connect() {
 }
 
 function showJoin() {
-  element('join-count').textContent = `${state.game.playerCount} от 16 места са заети`;
+  element('join-count').textContent = `${state.game.playerCount} от ${state.game.playerCapacity} места са заети${state.game.gameMode === 'duo' ? ' · Режим за двама' : ''}`;
   setView('join');
 }
 
 function enterWaitingRoom() {
-  element('player-label').textContent = `${state.player.name} · ${bgTeamName(state.player.teamName)}`;
+  updatePlayerLabel();
   element('player-identity').classList.remove('hidden');
   renderGame();
   setView('game');
@@ -89,7 +89,7 @@ async function refresh() {
     ]);
     state.game = game;
     state.player = player;
-    element('player-label').textContent = `${state.player.name} · ${bgTeamName(state.player.teamName)}`;
+    updatePlayerLabel();
     renderGame();
     setConnection('online', 'На живо');
   } catch (error) {
@@ -115,6 +115,15 @@ function isPregame(phase) {
   return ['lobby', 'test_question', 'test_result'].includes(phase);
 }
 
+function updatePlayerLabel() {
+  const role = state.player?.isCaptain ? ' · Капитан' : state.player?.isAnswerer ? ' · Отговаря' : '';
+  element('player-label').textContent = `${state.player.name} · ${bgTeamName(state.player.teamName)}${role}`;
+}
+
+function activeTeams(game) {
+  return game.teams.filter((team) => team.active !== false);
+}
+
 function renderGame() {
   const game = state.game;
   const pregame = isPregame(game.phase);
@@ -122,8 +131,8 @@ function renderGame() {
   element('game-progress-track').classList.toggle('hidden', pregame);
   element('category-strip').classList.toggle('hidden', pregame);
   if (pregame) {
-    element('category-kicker').textContent = `${game.playerCount} от 16 играчи са готови`;
-    element('category-name').textContent = 'Игрално фоайе';
+    element('category-kicker').textContent = `${game.playerCount} от ${game.playerCapacity} играчи са готови`;
+    element('category-name').textContent = game.gameMode === 'duo' ? 'Тестов режим за двама' : 'Игрално фоайе';
   } else {
     element('category-kicker').textContent = `${bgCategoryName(game.category.name)} · Въпроси ${game.category.start}–${game.category.end}`;
     element('category-name').textContent = bgCategoryName(game.category.name);
@@ -195,11 +204,11 @@ function renderStage(game) {
   }
 
   const copy = {
-    lobby: ['Изчакване', 'Добре дошъл в играта.', `Изчакай водещия. В залата са ${game.playerCount} от 16 играчи.`],
+    lobby: ['Изчакване', 'Добре дошъл в играта.', `Изчакай водещия. В залата са ${game.playerCount} от ${game.playerCapacity} играчи.`],
     test_question: ['Проверка на системата', `${test?.playerName}, това е твоят тестов въпрос.`, `Водещият ще отбележи отговора. Тестът не носи точки.`],
     test_result: ['Проверката приключи', test?.result ? 'Тестът е успешен.' : 'Тестът е отчетен като грешен.', 'Изчакайте водещия да стартира истинската викторина.'],
     category_start: ['Нова категория', 'Избираме капитани.', 'Водещият ще избере на случаен принцип капитан за всеки отбор.'],
-    betting: ['Време за залог', 'Капитани, изберете число.', 'Всеки отбор трябва да заключи неизползван залог от 1 до 100 преди въпросът да се покаже.'],
+    betting: ['Време за залог', game.gameMode === 'duo' ? 'Капитанът избира число.' : 'Капитани, изберете число.', game.gameMode === 'duo' ? 'Единственият капитан трябва да заключи неизползван залог преди въпросът да се покаже.' : 'Всеки отбор трябва да заключи неизползван залог от 1 до 100 преди въпросът да се покаже.'],
     question: ['Въпросът е открит', 'Отбори, заключете отговора си.', 'Водещият ще отбележи кои отбори са отговорили правилно.'],
     results: ['Точките са обновени', 'Резултатът е ясен.', 'Верните отбори получават залога си. Грешните не получават точки.'],
     finished: ['Край на играта', 'Това беше последният въпрос.', 'Класирането показва финалните резултати.']
@@ -234,13 +243,14 @@ function renderQuestionMedia(container, media) {
 }
 
 function renderTeams(game) {
+  const visibleTeams = activeTeams(game);
   const grid = element('team-grid');
   document.querySelectorAll('[data-player-panel]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.playerPanel === state.activePanel)));
   grid.classList.toggle('hidden', !state.activePanel);
   if (!state.activePanel) return;
 
   if (state.activePanel === 'points') {
-    const sorted = [...game.teams].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, 'bg'));
+    const sorted = [...visibleTeams].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, 'bg'));
     grid.replaceChildren(...sorted.map((team, index) => {
       const card = document.createElement('article'); card.className = `card info-card team-${game.teams.indexOf(team) + 1}`;
       const place = document.createElement('span'); place.className = 'info-rank'; place.textContent = `${index + 1}`;
@@ -252,7 +262,8 @@ function renderTeams(game) {
   }
 
   if (state.activePanel === 'bets') {
-    grid.replaceChildren(...game.teams.map((team, index) => {
+    grid.replaceChildren(...visibleTeams.map((team) => {
+      const index = game.teams.indexOf(team);
       const card = document.createElement('article'); card.className = `card info-card bet-info-card team-${index + 1}`;
       const name = document.createElement('strong'); name.textContent = bgTeamName(team.name);
       const wager = document.createElement('b');
@@ -265,7 +276,8 @@ function renderTeams(game) {
     return;
   }
 
-  const cards = game.teams.map((team, index) => {
+  const cards = visibleTeams.map((team) => {
+    const index = game.teams.indexOf(team);
     const card = document.createElement('article');
     card.className = `card team-card team-${index + 1}`;
     const top = document.createElement('div');
@@ -277,6 +289,7 @@ function renderTeams(game) {
     const captain = document.createElement('p');
     captain.className = 'captain';
     captain.textContent = team.captain ? `Капитан: ${team.captain.name}` : 'Капитан: очаква избор';
+    if (game.gameMode === 'duo' && team.answerer) captain.textContent += ` · Отговаря: ${team.answerer.name}`;
 
     const players = document.createElement('div');
     players.className = 'player-chips';

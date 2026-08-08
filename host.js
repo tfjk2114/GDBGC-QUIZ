@@ -98,13 +98,17 @@ function isPregame(phase) {
   return ['lobby', 'test_question', 'test_result'].includes(phase);
 }
 
+function activeTeams(game) {
+  return game.teams.filter((team) => team.active !== false);
+}
+
 function render() {
   const game = state.game;
   const pregame = isPregame(game.phase);
   element('host-question-counter').classList.toggle('hidden', pregame);
   if (pregame) {
-    element('host-kicker').textContent = `${game.playerCount} of 16 players joined`;
-    element('host-title').textContent = 'Game lobby';
+    element('host-kicker').textContent = `${game.playerCount} of ${game.playerCapacity} players joined`;
+    element('host-title').textContent = game.gameMode === 'duo' ? 'Two-player practice lobby' : 'Game lobby';
   } else {
     element('host-kicker').textContent = `${game.category.name} · Questions ${game.category.start}–${game.category.end}`;
     element('host-title').textContent = game.phase === 'finished' ? 'Final standings' : game.category.name;
@@ -115,7 +119,8 @@ function render() {
     betting: 'wagers', question: 'question', results: 'results', finished: 'finished'
   };
   element('phase-badge').textContent = phaseNames[game.phase] || game.phase;
-  element('roster-count').textContent = `${game.playerCount}/16 seats filled. New players are distributed automatically across the teams.`;
+  element('roster-title').textContent = game.gameMode === 'duo' ? 'One captain and one answerer' : 'Four teams of four';
+  element('roster-count').textContent = game.gameMode === 'duo' ? `${game.playerCount}/2 practice seats filled. Both players use ${game.teams[0].name}.` : `${game.playerCount}/16 seats filled. New players are distributed automatically across the teams.`;
   renderRound(game);
   renderTeams(game);
   renderPoints(game);
@@ -174,18 +179,21 @@ function renderRound(game) {
   if (game.phase === 'test_question') return renderTestQuestion(game, controls);
   if (game.phase === 'test_result') return renderTestResult(game, controls);
   if (game.phase === 'category_start') {
-    controls.innerHTML = '<p class="helper">The system randomly selects one of the four players on every team as captain for the next ten questions.</p>';
+    controls.innerHTML = `<p class="helper">${game.gameMode === 'duo' ? 'One player becomes captain and the other becomes the answerer for the next ten questions.' : 'The system randomly selects one of the four players on every team as captain for the next ten questions.'}</p>`;
     controls.append(actionButton('Draw captains and start category', () => post('/api/host/category/start', {})));
     return;
   }
 
   const captainGrid = document.createElement('div');
   captainGrid.className = 'captain-grid';
-  captainGrid.replaceChildren(...game.teams.map((team) => {
-    const text = document.createElement('span');
-    text.className = 'captain-name';
-    text.textContent = team.captain?.name || 'Not selected yet';
-    return teamCard(team, text);
+  captainGrid.replaceChildren(...activeTeams(game).map((team) => {
+    const roles = document.createElement('div'); roles.className = 'team-roles';
+    const captain = document.createElement('span'); captain.className = 'captain-name'; captain.textContent = `Captain: ${team.captain?.name || 'Not selected yet'}`;
+    roles.append(captain);
+    if (game.gameMode === 'duo') {
+      const answerer = document.createElement('small'); answerer.textContent = `Answerer: ${team.answerer?.name || 'Not selected yet'}`; roles.append(answerer);
+    }
+    return teamCard(team, roles);
   }));
   controls.append(captainGrid);
 
@@ -206,15 +214,22 @@ function renderLobby(game, controls) {
   copy.textContent = 'Players join from the public screen. Before the real quiz, run the required one-player, one-question system test.';
   const status = document.createElement('div');
   status.className = 'lobby-status';
-  status.innerHTML = `<strong>${game.playerCount}/16 players</strong><span>${game.testCompleted ? '✓ System test completed' : 'System test not run yet'}</span>`;
+  status.innerHTML = `<strong>${game.playerCount}/${game.playerCapacity} players</strong><span>${game.gameMode === 'duo' ? 'Two-player practice mode' : 'Full 16-player mode'}</span><span>${game.testCompleted ? '✓ System test completed' : 'System test not run yet'}</span>`;
   const actions = document.createElement('div');
   actions.className = 'control-actions';
   const testButton = actionButton('Run one-player system test', () => post('/api/host/test/start', {}));
   testButton.disabled = game.playerCount < 1;
   actions.append(testButton);
+  const nextMode = game.gameMode === 'duo' ? 'full' : 'duo';
+  const modeButton = actionButton(game.gameMode === 'duo' ? 'Switch to 16-player mode' : 'Enable 2-player practice', () => post('/api/host/mode', { mode: nextMode }), 'button-secondary');
+  if (nextMode === 'duo' && game.playerCount > 2) {
+    modeButton.disabled = true;
+    modeButton.title = 'Remove players until no more than two remain';
+  }
+  actions.append(modeButton);
   if (game.testCompleted) {
-    const startButton = actionButton('Start the real quiz', () => post('/api/host/game/start', {}));
-    startButton.disabled = game.playerCount !== 16;
+    const startButton = actionButton(game.gameMode === 'duo' ? 'Start 2-player practice quiz' : 'Start the real quiz', () => post('/api/host/game/start', {}));
+    startButton.disabled = game.playerCount !== game.playerCapacity;
     actions.append(startButton);
   }
   controls.append(copy, status, actions);
@@ -251,16 +266,17 @@ function renderTestResult(game, controls) {
     actionButton('Return to lobby', () => post('/api/host/test/reset', {}), 'button-secondary')
   );
   const startButton = actionButton('Start the real quiz', () => post('/api/host/game/start', {}));
-  startButton.disabled = game.playerCount !== 16;
+  startButton.textContent = game.gameMode === 'duo' ? 'Start 2-player practice quiz' : 'Start the real quiz';
+  startButton.disabled = game.playerCount !== game.playerCapacity;
   actions.append(startButton);
   controls.append(testPreview(game.test), result, actions);
 }
 
 function renderBetting(game, controls) {
   const help = document.createElement('p'); help.className = 'helper';
-  help.textContent = 'Each captain chooses an unused number from their private panel. Reveal the question after all four wagers arrive.';
+  help.textContent = game.gameMode === 'duo' ? 'The captain chooses one unused number. Reveal the question after that wager arrives.' : 'Each captain chooses an unused number from their private panel. Reveal the question after all four wagers arrive.';
   const grid = document.createElement('div'); grid.className = 'wager-grid';
-  for (const team of game.teams) {
+  for (const team of activeTeams(game)) {
     const wrapper = document.createElement('div');
     const submission = document.createElement('strong');
     const pending = game.pendingBets[team.id];
@@ -271,7 +287,7 @@ function renderBetting(game, controls) {
     wrapper.append(submission, used); grid.append(teamCard(team, wrapper));
   }
   const reveal = actionButton('Lock captain wagers and reveal question', () => post('/api/host/question/reveal', {}));
-  reveal.disabled = Object.keys(game.pendingBets).length !== 4;
+  reveal.disabled = Object.keys(game.pendingBets).length !== activeTeams(game).length;
   controls.append(help, grid, reveal);
 }
 
@@ -355,7 +371,7 @@ function renderScoring(game, controls) {
   const help = document.createElement('p'); help.className = 'helper';
   help.textContent = 'Choose a verdict for every team. A correct answer earns the locked wager; an incorrect answer earns zero.';
   const grid = document.createElement('div'); grid.className = 'result-grid';
-  for (const team of game.teams) {
+  for (const team of activeTeams(game)) {
     const select = document.createElement('select'); select.dataset.resultTeam = team.id;
     select.innerHTML = '<option value="">Choose verdict…</option><option value="true">Correct</option><option value="false">Incorrect</option>';
     const wrap = document.createElement('div');
@@ -372,7 +388,7 @@ function renderScoring(game, controls) {
 
 function renderResults(game, controls) {
   const grid = document.createElement('div'); grid.className = 'result-grid';
-  for (const team of game.teams) {
+  for (const team of activeTeams(game)) {
     const text = document.createElement('span'); text.className = team.correct ? 'result-correct' : 'result-wrong';
     text.textContent = team.correct ? `Correct · +${team.bet}` : 'Incorrect · +0';
     grid.append(teamCard(team, text));
@@ -393,6 +409,7 @@ function actionButton(label, handler, extraClass = '') {
 function renderTeams(game) {
   const cards = game.teams.map((team, teamIndex) => {
     const card = document.createElement('div'); card.className = 'team-edit-card';
+    if (game.gameMode === 'duo' && team.active === false) card.classList.add('hidden');
     const teamName = document.createElement('input');
     teamName.value = team.name; teamName.dataset.teamName = teamIndex; teamName.setAttribute('aria-label', `Team ${teamIndex + 1} name`);
     const players = document.createElement('div'); players.className = 'player-fields';
@@ -410,7 +427,7 @@ function renderTeams(game) {
 }
 
 function renderPoints(game) {
-  element('points-editor').replaceChildren(...game.teams.map((team) => {
+  element('points-editor').replaceChildren(...activeTeams(game).map((team) => {
     const row = document.createElement('div'); row.className = 'point-row';
     const name = document.createElement('span'); name.textContent = team.name;
     const input = document.createElement('input'); input.type = 'number'; input.value = team.points;
@@ -421,7 +438,7 @@ function renderPoints(game) {
 }
 
 function renderHostBets(game) {
-  element('host-bets-view').replaceChildren(...game.teams.map((team) => {
+  element('host-bets-view').replaceChildren(...activeTeams(game).map((team) => {
     const row = document.createElement('article'); row.className = 'host-bet-row';
     const heading = document.createElement('div');
     const name = document.createElement('strong'); name.textContent = team.name;
