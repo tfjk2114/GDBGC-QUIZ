@@ -119,6 +119,10 @@ function render() {
     betting: 'wagers', question: 'question', results: 'results', finished: 'finished'
   };
   element('phase-badge').textContent = phaseNames[game.phase] || game.phase;
+  const modeButton = element('game-mode-button');
+  modeButton.textContent = game.gameMode === 'duo' ? 'Use 16-player mode' : 'Enable 2-player practice';
+  modeButton.disabled = game.phase !== 'lobby' || (game.gameMode !== 'duo' && game.playerCount > 2);
+  modeButton.title = game.phase !== 'lobby' ? 'Reset or return to the lobby to change modes' : modeButton.disabled ? 'Remove players until no more than two remain' : '';
   element('roster-title').textContent = game.gameMode === 'duo' ? 'One captain and one answerer' : 'Four teams of four';
   element('roster-count').textContent = game.gameMode === 'duo' ? `${game.playerCount}/2 practice seats filled. Both players use ${game.teams[0].name}.` : `${game.playerCount}/16 seats filled. New players are distributed automatically across the teams.`;
   renderRound(game);
@@ -220,13 +224,6 @@ function renderLobby(game, controls) {
   const testButton = actionButton('Run one-player system test', () => post('/api/host/test/start', {}));
   testButton.disabled = game.playerCount < 1;
   actions.append(testButton);
-  const nextMode = game.gameMode === 'duo' ? 'full' : 'duo';
-  const modeButton = actionButton(game.gameMode === 'duo' ? 'Switch to 16-player mode' : 'Enable 2-player practice', () => post('/api/host/mode', { mode: nextMode }), 'button-secondary');
-  if (nextMode === 'duo' && game.playerCount > 2) {
-    modeButton.disabled = true;
-    modeButton.title = 'Remove players until no more than two remain';
-  }
-  actions.append(modeButton);
   if (game.testCompleted) {
     const startButton = actionButton(game.gameMode === 'duo' ? 'Start 2-player practice quiz' : 'Start the real quiz', () => post('/api/host/game/start', {}));
     startButton.disabled = game.playerCount !== game.playerCapacity;
@@ -480,6 +477,11 @@ element('save-teams').addEventListener('click', async () => {
 element('randomize-players').addEventListener('click', async () => {
   if (!confirm('Randomize all joined players across the four teams?')) return;
   await post('/api/host/players/randomize', {});
+});
+
+element('game-mode-button').addEventListener('click', async () => {
+  if (state.game?.phase !== 'lobby') return;
+  await post('/api/host/mode', { mode: state.game.gameMode === 'duo' ? 'full' : 'duo' });
 });
 
 element('reset-button').addEventListener('click', async () => {

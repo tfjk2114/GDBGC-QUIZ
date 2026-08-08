@@ -10,6 +10,8 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .form-error { min-height: 20px; color: var(--danger); }
 .host-titlebar { display: flex; align-items: end; justify-content: space-between; margin-bottom: 22px; }
 .host-titlebar h1 { font-size: clamp(2.2rem, 5vw, 4rem); }
+.host-title-actions { display: flex; gap: 14px; align-items: center; }
+.host-title-actions > .button { min-height: 42px; padding: 0 14px; font-size: .75rem; }
 .host-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
 .host-main, .host-sidebar { display: grid; align-content: start; gap: 20px; }
 .control-card { padding: clamp(22px, 4vw, 34px); box-shadow: 0 15px 42px rgba(0,0,0,.24); }
@@ -100,6 +102,8 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
   .host-body .page-shell { width: min(100% - 18px, 1180px); }
   .host-body main { padding-top: 10px; }
   .host-titlebar { align-items: center; margin-bottom: 14px; }
+  .host-title-actions { display: grid; gap: 6px; justify-items: end; }
+  .host-title-actions > .button { min-height: 36px; max-width: 145px; padding: 4px 8px; font-size: .62rem; }
   .host-titlebar h1 { font-size: 1.85rem; }
   .host-titlebar .eyebrow { font-size: .62rem; }
   .host-view-tabs { position: sticky; bottom: 7px; z-index: 18; grid-template-columns: repeat(5, 1fr); gap: 4px; }
