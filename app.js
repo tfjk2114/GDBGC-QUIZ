@@ -1,10 +1,10 @@
-const views = ['loading', 'offline', 'start', 'quiz', 'result'];
-const state = { apiBase: '', quiz: null, current: 0, answers: {}, startedAt: 0 };
-
+const state = { apiBase: '', game: null, timer: null };
 const element = (id) => document.getElementById(id);
 
-function showView(name) {
-  for (const view of views) element(`${view}-view`).classList.toggle('hidden', view !== name);
+function setView(name) {
+  element('loading-view').classList.toggle('hidden', name !== 'loading');
+  element('offline-view').classList.toggle('hidden', name !== 'offline');
+  element('game-view').classList.toggle('hidden', name !== 'game');
 }
 
 function setConnection(kind, label) {
@@ -13,130 +13,150 @@ function setConnection(kind, label) {
   status.lastElementChild.textContent = label;
 }
 
-async function request(path, options = {}) {
-  const response = await fetch(`${state.apiBase}${path}`, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    signal: AbortSignal.timeout(8000)
-  });
-  if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Request failed (${response.status})`);
+async function api(path) {
+  const response = await fetch(`${state.apiBase}${path}`, { cache: 'no-store', signal: AbortSignal.timeout(7000) });
+  if (!response.ok) throw new Error(`Game server returned ${response.status}`);
   return response.json();
 }
 
 async function connect() {
-  showView('loading');
+  clearInterval(state.timer);
+  setView('loading');
   setConnection('loading', 'Connecting');
   try {
-    const discoveryResponse = await fetch(`api.json?ts=${Date.now()}`, { cache: 'no-store', signal: AbortSignal.timeout(7000) });
-    if (!discoveryResponse.ok) throw new Error('Could not load the backend address.');
-    const discovery = await discoveryResponse.json();
-    if (!discovery.online || !discovery.apiBase) throw new Error('The WSL backend is currently offline.');
+    const response = await fetch(`api.json?ts=${Date.now()}`, { cache: 'no-store', signal: AbortSignal.timeout(7000) });
+    const discovery = await response.json();
+    if (!discovery.online || !discovery.apiBase) throw new Error('The host has not opened the game room yet.');
     state.apiBase = discovery.apiBase.replace(/\/$/, '');
-    await request('/health');
-    state.quiz = await request('/api/quiz');
-    element('quiz-title').textContent = state.quiz.title;
-    element('quiz-description').textContent = state.quiz.description;
-    setConnection('online', 'WSL online');
-    showView('start');
+    await refresh();
+    state.timer = setInterval(refresh, 1200);
   } catch (error) {
-    setConnection('offline', 'Offline');
-    element('offline-message').textContent = error.message || 'The backend could not be reached.';
-    showView('offline');
+    goOffline(error);
   }
 }
 
-function startQuiz() {
-  state.current = 0;
-  state.answers = {};
-  state.startedAt = Date.now();
-  renderQuestion();
-  showView('quiz');
-}
-
-function renderQuestion() {
-  const question = state.quiz.questions[state.current];
-  const total = state.quiz.questions.length;
-  element('question-count').textContent = `Question ${state.current + 1} of ${total}`;
-  element('score-preview').textContent = `${Object.keys(state.answers).length} answered`;
-  element('progress-bar').style.width = `${(state.current / total) * 100}%`;
-  element('question-category').textContent = question.category;
-  element('question-text').textContent = question.prompt;
-  element('next-button').textContent = state.current === total - 1 ? 'See my score' : 'Next question';
-  element('next-button').disabled = state.answers[question.id] === undefined;
-
-  const list = element('answer-list');
-  list.replaceChildren(...question.options.map((option, index) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = `answer${state.answers[question.id] === index ? ' selected' : ''}`;
-    button.innerHTML = `<span class="answer-letter">${String.fromCharCode(65 + index)}</span><span></span>`;
-    button.lastElementChild.textContent = option;
-    button.addEventListener('click', () => {
-      state.answers[question.id] = index;
-      renderQuestion();
-    });
-    return button;
-  }));
-}
-
-async function nextQuestion() {
-  if (state.current < state.quiz.questions.length - 1) {
-    state.current += 1;
-    renderQuestion();
-    return;
-  }
-  element('next-button').disabled = true;
-  element('next-button').textContent = 'Scoring…';
+async function refresh() {
   try {
-    const result = await request('/api/attempts', {
-      method: 'POST',
-      body: JSON.stringify({
-        name: element('player-name').value.trim() || 'Anonymous',
-        answers: state.answers,
-        elapsedSeconds: Math.max(1, Math.round((Date.now() - state.startedAt) / 1000))
-      })
-    });
-    renderResults(result);
-    showView('result');
+    const game = await api('/api/game');
+    if (!state.game || game.version !== state.game.version) {
+      state.game = game;
+      renderGame();
+    }
+    setConnection('online', 'Live');
+    setView('game');
   } catch (error) {
-    element('next-button').disabled = false;
-    element('next-button').textContent = 'Try scoring again';
-    alert(error.message);
+    goOffline(error);
   }
 }
 
-function renderResults(result) {
-  const percent = Math.round((result.score / result.total) * 100);
-  element('score-value').textContent = `${result.score}/${result.total}`;
-  element('score-ring').style.setProperty('--score-angle', `${percent * 3.6}deg`);
-  element('result-heading').textContent = percent === 100 ? 'Flawless run.' : percent >= 60 ? 'Nicely done.' : 'Good first pass.';
-  element('result-copy').textContent = `You scored ${percent}% in ${result.elapsedSeconds} seconds.`;
+function goOffline(error) {
+  clearInterval(state.timer);
+  setConnection('offline', 'Offline');
+  element('offline-message').textContent = error.message || 'The host backend cannot be reached.';
+  setView('offline');
+}
 
-  element('review-list').replaceChildren(...result.review.map((item) => {
-    const row = document.createElement('div');
-    row.className = `review-item${item.correct ? ' correct' : ''}`;
-    const title = document.createElement('strong');
-    title.textContent = `${item.correct ? '✓' : '×'} ${item.prompt}`;
-    const copy = document.createElement('p');
-    copy.textContent = item.explanation;
-    row.append(title, copy);
-    return row;
-  }));
+function renderGame() {
+  const game = state.game;
+  const category = game.category;
+  element('category-kicker').textContent = `${category.name} · Questions ${category.start}–${category.end}`;
+  element('category-name').textContent = category.name;
+  element('question-number').textContent = game.questionNumber;
+  element('game-progress').style.width = `${Math.min(100, game.questionNumber)}%`;
+  renderStage(game);
+  renderTeams(game);
+  renderLeaderboard(game.teams);
+  renderCategories(game);
+}
 
-  const board = element('leaderboard');
-  board.replaceChildren(...result.leaderboard.map((entry) => {
+function renderStage(game) {
+  const questionBox = element('question-box');
+  questionBox.classList.toggle('hidden', !game.question);
+  if (game.question) {
+    element('question-label').textContent = `Question ${game.question.number}`;
+    element('question-text').textContent = game.question.prompt;
+  }
+
+  const copy = {
+    category_start: ['New category', 'Captains incoming.', 'The host will randomly choose one captain for every team before the category begins.'],
+    betting: ['Wager phase', 'Captains, choose your number.', 'Each team must lock one unused wager from 1 to 100 before the question is revealed.'],
+    question: ['Question revealed', 'Teams, lock in your answer.', 'The host will decide which teams answered correctly.'],
+    results: ['Scores updated', 'The verdict is in.', 'Correct teams receive their wager. Incorrect teams gain no points this round.'],
+    finished: ['Game complete', 'That’s the final question.', 'The leaderboard shows the final standings.']
+  }[game.phase] || ['Game status', 'Waiting for the host.', ''];
+  element('stage-kicker').textContent = copy[0];
+  element('stage-title').textContent = copy[1];
+  element('stage-copy').textContent = copy[2];
+}
+
+function renderTeams(game) {
+  const cards = game.teams.map((team, index) => {
+    const card = document.createElement('article');
+    card.className = `card team-card team-${index + 1}`;
+    const top = document.createElement('div');
+    top.className = 'team-card-top';
+    const title = document.createElement('h3');
+    title.textContent = team.name;
+    const points = document.createElement('strong');
+    points.className = 'team-points';
+    points.textContent = `${team.points} pts`;
+    top.append(title, points);
+
+    const captain = document.createElement('p');
+    captain.className = 'captain';
+    captain.textContent = team.captain ? `Captain: ${team.captain.name}` : 'Captain: waiting for draw';
+
+    const players = document.createElement('div');
+    players.className = 'player-chips';
+    for (const [playerIndex, player] of team.players.entries()) {
+      const chip = document.createElement('span');
+      chip.textContent = player;
+      if (team.captain?.playerIndex === playerIndex) chip.classList.add('is-captain');
+      players.append(chip);
+    }
+
+    const footer = document.createElement('div');
+    footer.className = 'team-round';
+    const used = document.createElement('span');
+    used.textContent = `${team.usedWagerCount}/100 wagers used`;
+    footer.append(used);
+    if (team.bet !== undefined) {
+      const bet = document.createElement('strong');
+      bet.textContent = `Wager ${team.bet}`;
+      if (game.phase === 'results') {
+        bet.className = team.correct ? 'result-correct' : 'result-wrong';
+        bet.textContent = team.correct ? `+${team.bet}` : `+0`;
+      }
+      footer.append(bet);
+    }
+    card.append(top, captain, players, footer);
+    return card;
+  });
+  element('team-grid').replaceChildren(...cards);
+}
+
+function renderLeaderboard(teams) {
+  const sorted = [...teams].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
+  element('leaderboard-list').replaceChildren(...sorted.map((team) => {
     const row = document.createElement('li');
     const name = document.createElement('span');
-    const score = document.createElement('strong');
-    name.textContent = entry.name;
-    score.textContent = `${entry.score}/${entry.total}`;
-    row.append(name, score);
+    const points = document.createElement('strong');
+    name.textContent = team.name;
+    points.textContent = team.points;
+    row.append(name, points);
     return row;
+  }));
+}
+
+function renderCategories(game) {
+  element('category-strip').replaceChildren(...game.categories.map((category, index) => {
+    const item = document.createElement('span');
+    item.className = index < game.categoryIndex ? 'complete' : index === game.categoryIndex ? 'active' : '';
+    item.textContent = index + 1;
+    item.title = category.name;
+    return item;
   }));
 }
 
 element('retry-button').addEventListener('click', connect);
-element('start-button').addEventListener('click', startQuiz);
-element('next-button').addEventListener('click', nextQuestion);
-element('again-button').addEventListener('click', () => showView('start'));
 connect();

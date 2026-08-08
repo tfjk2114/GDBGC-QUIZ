@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
+import hmac
 import json
 import os
+import random
 import re
+import secrets
 import tempfile
 import threading
 import time
-from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data"
-SCORES_PATH = DATA_DIR / "scores.json"
+GAME_PATH = DATA_DIR / "game.json"
+TOKEN_PATH = Path(os.getenv("GDBGC_HOST_TOKEN_PATH", "/var/lib/gdbgc-quiz/host-token"))
 HOST = os.getenv("GDBGC_HOST", "127.0.0.1")
 PORT = int(os.getenv("GDBGC_PORT", "4317"))
 ALLOWED_ORIGINS = {
@@ -20,95 +23,169 @@ ALLOWED_ORIGINS = {
     "http://127.0.0.1:8000",
     "http://localhost:8000",
 }
-LOCK = threading.Lock()
+LOCK = threading.RLock()
 STARTED_AT = time.monotonic()
 
-QUIZ = {
-    "title": "How sharp are your dev instincts?",
-    "description": "Five quick questions across the web, Git, and programming fundamentals.",
-    "questions": [
-        {
-            "id": "http-method",
-            "category": "Web APIs",
-            "prompt": "Which HTTP method is normally used to create a new resource?",
-            "options": ["GET", "POST", "TRACE", "HEAD"],
-            "answer": 1,
-            "explanation": "POST submits a representation for the server to process, commonly creating a resource.",
-        },
-        {
-            "id": "git-branch",
-            "category": "Git",
-            "prompt": "What does a Git branch point to?",
-            "options": ["A repository URL", "A commit", "A file tree only", "A remote server"],
-            "answer": 1,
-            "explanation": "A branch is a movable reference to a commit; it advances as new commits are added.",
-        },
-        {
-            "id": "css-layout",
-            "category": "CSS",
-            "prompt": "Which CSS layout system is designed for rows and columns at the same time?",
-            "options": ["Floats", "Grid", "Inline flow", "Position absolute"],
-            "answer": 1,
-            "explanation": "CSS Grid is two-dimensional, making it ideal for coordinated rows and columns.",
-        },
-        {
-            "id": "js-promise",
-            "category": "JavaScript",
-            "prompt": "What does an async JavaScript function always return?",
-            "options": ["A callback", "A Promise", "Undefined", "A generator"],
-            "answer": 1,
-            "explanation": "An async function always returns a Promise, wrapping non-Promise return values automatically.",
-        },
-        {
-            "id": "database-index",
-            "category": "Databases",
-            "prompt": "What is the main tradeoff of adding a database index?",
-            "options": ["Faster reads, extra storage and write cost", "Slower reads, faster network", "No storage cost", "Automatic encryption"],
-            "answer": 0,
-            "explanation": "Indexes speed up matching reads but consume storage and must be updated whenever indexed data changes.",
-        },
-    ],
-}
+CATEGORIES = [
+    {"id": f"category-{index + 1}", "name": f"Category {index + 1}", "start": index * 10 + 1, "end": index * 10 + 10}
+    for index in range(10)
+]
+QUESTIONS = [
+    {
+        "id": f"question-{index + 1}",
+        "number": index + 1,
+        "categoryIndex": index // 10,
+        "prompt": f"Question {index + 1} will be supplied with the final category content.",
+    }
+    for index in range(100)
+]
 
 
-def public_quiz():
+def default_teams():
+    return [
+        {
+            "id": f"team-{index + 1}",
+            "name": f"Team {index + 1}",
+            "players": [f"Player {seat + 1}" for seat in range(4)],
+            "points": 0,
+            "usedWagers": [],
+        }
+        for index in range(4)
+    ]
+
+
+def default_game(teams=None):
     return {
-        "title": QUIZ["title"],
-        "description": QUIZ["description"],
-        "questions": [
-            {key: question[key] for key in ("id", "category", "prompt", "options")}
-            for question in QUIZ["questions"]
-        ],
+        "version": 1,
+        "phase": "category_start",
+        "currentQuestionIndex": 0,
+        "captains": {},
+        "bets": {},
+        "results": {},
+        "teams": teams or default_teams(),
     }
 
 
-def load_scores():
-    try:
-        return json.loads(SCORES_PATH.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
-
-
-def save_scores(scores):
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    fd, temp_path = tempfile.mkstemp(prefix="scores-", suffix=".json", dir=DATA_DIR)
+def atomic_json_write(path, payload):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_path = tempfile.mkstemp(prefix=f"{path.stem}-", suffix=".json", dir=path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(scores, handle, indent=2)
+            json.dump(payload, handle, indent=2)
             handle.write("\n")
-        os.replace(temp_path, SCORES_PATH)
+        os.replace(temp_path, path)
     finally:
         if os.path.exists(temp_path):
             os.unlink(temp_path)
 
 
-def leaderboard(scores):
-    ordered = sorted(scores, key=lambda item: (-item["score"], item["elapsedSeconds"], item["createdAt"]))
-    return [{key: item[key] for key in ("name", "score", "total", "elapsedSeconds")} for item in ordered[:10]]
+def load_game():
+    try:
+        game = json.loads(GAME_PATH.read_text(encoding="utf-8"))
+        if len(game.get("teams", [])) != 4:
+            raise ValueError("Invalid team count")
+        return game
+    except (FileNotFoundError, json.JSONDecodeError, ValueError):
+        game = default_game()
+        atomic_json_write(GAME_PATH, game)
+        return game
+
+
+def ensure_host_token():
+    try:
+        token = TOKEN_PATH.read_text(encoding="utf-8").strip()
+        if token:
+            return token
+    except FileNotFoundError:
+        pass
+    TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+    token = secrets.token_urlsafe(32)
+    TOKEN_PATH.write_text(f"{token}\n", encoding="utf-8")
+    os.chmod(TOKEN_PATH, 0o600)
+    return token
+
+
+GAME = load_game()
+HOST_TOKEN = ensure_host_token()
+
+
+def current_category_index():
+    return min(GAME["currentQuestionIndex"] // 10, 9)
+
+
+def current_question():
+    if GAME["currentQuestionIndex"] >= len(QUESTIONS):
+        return None
+    return QUESTIONS[GAME["currentQuestionIndex"]]
+
+
+def captain_for(team):
+    player_index = GAME["captains"].get(team["id"])
+    if isinstance(player_index, int) and 0 <= player_index < len(team["players"]):
+        return {"playerIndex": player_index, "name": team["players"][player_index]}
+    return None
+
+
+def public_game():
+    question = current_question()
+    phase = GAME["phase"]
+    visible_question = None
+    if question and phase in {"question", "results"}:
+        visible_question = question
+    teams = []
+    for team in GAME["teams"]:
+        team_view = {
+            "id": team["id"],
+            "name": team["name"],
+            "players": team["players"],
+            "points": team["points"],
+            "usedWagerCount": len(team["usedWagers"]),
+            "captain": captain_for(team),
+        }
+        if phase in {"question", "results"}:
+            team_view["bet"] = GAME["bets"].get(team["id"])
+        if phase == "results":
+            team_view["correct"] = GAME["results"].get(team["id"])
+        teams.append(team_view)
+    return {
+        "version": GAME["version"],
+        "phase": phase,
+        "questionNumber": GAME["currentQuestionIndex"] + 1 if question else 100,
+        "totalQuestions": 100,
+        "categoryIndex": current_category_index(),
+        "category": CATEGORIES[current_category_index()],
+        "question": visible_question,
+        "teams": teams,
+        "categories": CATEGORIES,
+    }
+
+
+def host_game():
+    view = public_game()
+    view["teams"] = [
+        {
+            **public_team,
+            "usedWagers": next(team["usedWagers"] for team in GAME["teams"] if team["id"] == public_team["id"]),
+        }
+        for public_team in view["teams"]
+    ]
+    view["bets"] = GAME["bets"]
+    view["results"] = GAME["results"]
+    return view
+
+
+def save_game():
+    GAME["version"] += 1
+    atomic_json_write(GAME_PATH, GAME)
+
+
+def clean_label(value, fallback, maximum=32):
+    cleaned = re.sub(r"[^\w .&'!-]", "", str(value), flags=re.UNICODE).strip()
+    return cleaned[:maximum] or fallback
 
 
 class QuizHandler(BaseHTTPRequestHandler):
-    server_version = "GDBGCQuiz/1.0"
+    server_version = "GDBGCQuiz/2.0"
 
     def log_message(self, message, *args):
         print(f"{self.address_string()} - {message % args}", flush=True)
@@ -119,7 +196,7 @@ class QuizHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         super().end_headers()
@@ -132,6 +209,23 @@ class QuizHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def read_json(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        if length <= 0 or length > 65_536:
+            raise ValueError("Invalid request size")
+        return json.loads(self.rfile.read(length))
+
+    def is_host(self):
+        value = self.headers.get("Authorization", "")
+        token = value.removeprefix("Bearer ").strip()
+        return bool(token) and hmac.compare_digest(token, HOST_TOKEN)
+
+    def require_host(self):
+        if self.is_host():
+            return True
+        self.send_json(401, {"error": "Invalid host access key"})
+        return False
+
     def do_OPTIONS(self):
         self.send_response(204)
         self.end_headers()
@@ -139,58 +233,138 @@ class QuizHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/health":
-            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
-        elif path == "/api/quiz":
-            self.send_json(200, public_quiz())
-        elif path == "/api/leaderboard":
+            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 2, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
+        elif path == "/api/game":
             with LOCK:
-                self.send_json(200, {"leaderboard": leaderboard(load_scores())})
+                self.send_json(200, public_game())
+        elif path == "/api/host/state":
+            if self.require_host():
+                with LOCK:
+                    self.send_json(200, host_game())
         else:
             self.send_json(404, {"error": "Not found"})
 
     def do_POST(self):
-        if urlparse(self.path).path != "/api/attempts":
-            self.send_json(404, {"error": "Not found"})
+        if not self.require_host():
             return
+        path = urlparse(self.path).path
         try:
-            length = int(self.headers.get("Content-Length", "0"))
-            if length <= 0 or length > 16_384:
-                raise ValueError("Invalid request size")
-            payload = json.loads(self.rfile.read(length))
-            name = re.sub(r"[^\w .'-]", "", str(payload.get("name", "Anonymous")), flags=re.UNICODE).strip()[:24] or "Anonymous"
-            answers = payload.get("answers")
-            if not isinstance(answers, dict):
-                raise ValueError("Answers must be an object")
-            review = []
-            score = 0
-            for question in QUIZ["questions"]:
-                selected = answers.get(question["id"])
-                correct = selected == question["answer"]
-                score += int(correct)
-                review.append({
-                    "id": question["id"],
-                    "prompt": question["prompt"],
-                    "correct": correct,
-                    "correctAnswer": question["options"][question["answer"]],
-                    "explanation": question["explanation"],
-                })
-            elapsed = max(1, min(3600, int(payload.get("elapsedSeconds", len(QUIZ["questions"]) * 8))))
-            entry = {
-                "name": name,
-                "score": score,
-                "total": len(QUIZ["questions"]),
-                "elapsedSeconds": elapsed,
-                "createdAt": datetime.now(timezone.utc).isoformat(),
-            }
+            payload = self.read_json()
             with LOCK:
-                scores = load_scores()
-                scores.append(entry)
-                scores = scores[-500:]
-                save_scores(scores)
-                board = leaderboard(scores)
-            self.send_json(201, {**entry, "review": review, "leaderboard": board})
-        except (ValueError, TypeError, json.JSONDecodeError) as error:
+                if path == "/api/host/teams":
+                    self.update_teams(payload)
+                elif path == "/api/host/category/start":
+                    self.start_category()
+                elif path == "/api/host/question/reveal":
+                    self.reveal_question(payload)
+                elif path == "/api/host/question/score":
+                    self.score_question(payload)
+                elif path == "/api/host/question/next":
+                    self.next_question()
+                elif path == "/api/host/points":
+                    self.update_points(payload)
+                elif path == "/api/host/reset":
+                    self.reset_game(payload)
+                else:
+                    self.send_json(404, {"error": "Not found"})
+                    return
+                save_game()
+                self.send_json(200, host_game())
+        except (ValueError, TypeError, KeyError, json.JSONDecodeError) as error:
             self.send_json(400, {"error": str(error)})
+
+    def update_teams(self, payload):
+        teams = payload.get("teams")
+        if not isinstance(teams, list) or len(teams) != 4:
+            raise ValueError("Exactly four teams are required")
+        for index, submitted in enumerate(teams):
+            players = submitted.get("players")
+            if not isinstance(players, list) or len(players) != 4:
+                raise ValueError("Every team requires exactly four players")
+            team = GAME["teams"][index]
+            team["name"] = clean_label(submitted.get("name"), f"Team {index + 1}")
+            team["players"] = [clean_label(name, f"Player {seat + 1}") for seat, name in enumerate(players)]
+
+    def start_category(self):
+        if GAME["phase"] not in {"category_start", "setup"}:
+            raise ValueError("Finish the current question before starting a category")
+        GAME["captains"] = {team["id"]: random.randrange(4) for team in GAME["teams"]}
+        GAME["bets"] = {}
+        GAME["results"] = {}
+        GAME["phase"] = "betting"
+
+    def reveal_question(self, payload):
+        if GAME["phase"] != "betting":
+            raise ValueError("Wagers can only be locked during the betting phase")
+        submitted = payload.get("bets")
+        if not isinstance(submitted, dict):
+            raise ValueError("A wager is required for every team")
+        bets = {}
+        for team in GAME["teams"]:
+            wager = submitted.get(team["id"])
+            if isinstance(wager, bool) or not isinstance(wager, int) or not 1 <= wager <= 100:
+                raise ValueError(f"{team['name']} must choose a whole number from 1 to 100")
+            if wager in team["usedWagers"]:
+                raise ValueError(f"{team['name']} already used {wager}")
+            bets[team["id"]] = wager
+        GAME["bets"] = bets
+        for team in GAME["teams"]:
+            team["usedWagers"].append(bets[team["id"]])
+            team["usedWagers"].sort()
+        GAME["results"] = {}
+        GAME["phase"] = "question"
+
+    def score_question(self, payload):
+        if GAME["phase"] != "question":
+            raise ValueError("The question is not ready to score")
+        submitted = payload.get("results")
+        if not isinstance(submitted, dict):
+            raise ValueError("A result is required for every team")
+        results = {}
+        for team in GAME["teams"]:
+            result = submitted.get(team["id"])
+            if not isinstance(result, bool):
+                raise ValueError(f"Choose correct or incorrect for {team['name']}")
+            results[team["id"]] = result
+            if result:
+                team["points"] += GAME["bets"][team["id"]]
+        GAME["results"] = results
+        GAME["phase"] = "results"
+
+    def next_question(self):
+        if GAME["phase"] != "results":
+            raise ValueError("Score the current question before moving on")
+        GAME["currentQuestionIndex"] += 1
+        GAME["bets"] = {}
+        GAME["results"] = {}
+        if GAME["currentQuestionIndex"] >= 100:
+            GAME["currentQuestionIndex"] = 100
+            GAME["phase"] = "finished"
+        elif GAME["currentQuestionIndex"] % 10 == 0:
+            GAME["captains"] = {}
+            GAME["phase"] = "category_start"
+        else:
+            GAME["phase"] = "betting"
+
+    def update_points(self, payload):
+        team_id = str(payload.get("teamId", ""))
+        points = payload.get("points")
+        if isinstance(points, bool) or not isinstance(points, int) or not -1_000_000 <= points <= 1_000_000:
+            raise ValueError("Points must be a whole number between -1,000,000 and 1,000,000")
+        team = next((item for item in GAME["teams"] if item["id"] == team_id), None)
+        if not team:
+            raise ValueError("Unknown team")
+        team["points"] = points
+
+    def reset_game(self, payload):
+        if payload.get("confirmation") != "RESET":
+            raise ValueError("Reset confirmation is required")
+        teams = [
+            {**team, "points": 0, "usedWagers": []}
+            for team in GAME["teams"]
+        ]
+        GAME.clear()
+        GAME.update(default_game(teams))
 
 
 if __name__ == "__main__":

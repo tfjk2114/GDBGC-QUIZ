@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>GDBGC Quiz — Host Control</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="host.css">
+    <script src="host.js" defer></script>
+  </head>
+  <body class="host-body">
+    <div class="page-shell">
+      <header class="site-header">
+        <a class="brand" href="./"><span class="brand-mark">G</span><span>Host Control</span></a>
+        <div class="header-actions">
+          <a href="./">Player screen</a>
+          <button id="logout-button" class="text-button hidden" type="button">Lock panel</button>
+          <div id="connection-status" class="status status-loading"><span class="status-dot"></span><span>Connecting</span></div>
+        </div>
+      </header>
+
+      <main>
+        <section id="login-view" class="card host-login">
+          <p class="eyebrow">Restricted controls</p>
+          <h1>Host access</h1>
+          <p class="lede">Enter the private host key stored in WSL. Players do not need this key.</p>
+          <form id="login-form" class="stack-form">
+            <label><span>Host access key</span><input id="host-token" type="password" autocomplete="current-password" required></label>
+            <button class="button button-primary" type="submit">Unlock control panel</button>
+          </form>
+          <p id="login-error" class="form-error" role="alert"></p>
+        </section>
+
+        <div id="panel-view" class="hidden">
+          <section class="host-titlebar">
+            <div>
+              <p id="host-kicker" class="eyebrow"></p>
+              <h1 id="host-title">Game control</h1>
+            </div>
+            <div class="question-counter"><strong id="host-question">1</strong><span>/ 100</span></div>
+          </section>
+
+          <div id="host-message" class="host-message hidden" role="status"></div>
+
+          <section class="host-grid">
+            <div class="host-main">
+              <section class="card control-card">
+                <div class="section-heading"><div><p class="eyebrow">Round controls</p><h2 id="round-title"></h2></div><span id="phase-badge" class="phase-badge"></span></div>
+                <div id="round-controls"></div>
+              </section>
+
+              <section class="card control-card">
+                <div class="section-heading"><div><p class="eyebrow">Roster</p><h2>Four teams of four</h2></div><button id="save-teams" class="button button-primary" type="button">Save teams</button></div>
+                <div id="team-editor" class="team-editor"></div>
+              </section>
+            </div>
+
+            <aside class="host-sidebar">
+              <section class="card control-card">
+                <p class="eyebrow">Manual override</p>
+                <h2>Edit points</h2>
+                <p class="helper">Set any team’s total at any time.</p>
+                <div id="points-editor" class="points-editor"></div>
+              </section>
+
+              <section class="card control-card danger-zone">
+                <p class="eyebrow">Danger zone</p>
+                <h2>Reset game</h2>
+                <p class="helper">Keeps team names, but clears points, wagers, captains, and progress.</p>
+                <button id="reset-button" class="button button-danger" type="button">Reset all progress</button>
+              </section>
+            </aside>
+          </section>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>
