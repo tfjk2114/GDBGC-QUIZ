@@ -6,7 +6,9 @@ const state = {
   timer: null,
   timerTicker: null,
   activePanel: null,
-  betPanelOpen: false
+  betPanelOpen: false,
+  finaleVersion: null,
+  finaleDismissed: false
 };
 const element = (id) => document.getElementById(id);
 const bgTeamName = (name) => name.replace(/^Team (\d+)$/, 'Отбор $1');
@@ -148,7 +150,56 @@ function renderGame() {
   renderCaptainPanel(game);
   renderCommunicationTabs(game);
   renderTeams(game);
+  renderFinale(game);
   if (!pregame) renderCategories(game);
+}
+
+function renderFinale(game) {
+  const overlay = element('finale-overlay');
+  if (game.phase !== 'finished') {
+    overlay.classList.add('hidden');
+    state.finaleDismissed = false;
+    state.finaleVersion = null;
+    return;
+  }
+  if (state.finaleDismissed) {
+    overlay.classList.add('hidden'); return;
+  }
+  overlay.classList.remove('hidden');
+  if (state.finaleVersion === game.version) return;
+  state.finaleVersion = game.version;
+  const ranked = [...activeTeams(game)].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, 'bg'));
+  element('finale-winner').textContent = `${bgTeamName(ranked[0].name)} ПЕЧЕЛИ С ${ranked[0].points} ТОЧКИ!`;
+
+  const revealDelay = { 1: '2.8s', 2: '1.5s', 3: '.4s' };
+  const podiumOrder = [ranked[2], ranked[0], ranked[1]].filter(Boolean);
+  element('finale-podium').replaceChildren(...podiumOrder.map((team) => {
+    const rank = ranked.indexOf(team) + 1;
+    const slot = document.createElement('article');
+    slot.className = `podium-slot podium-rank-${rank} team-${game.teams.indexOf(team) + 1}`;
+    slot.style.setProperty('--reveal-delay', revealDelay[rank]);
+    const medal = document.createElement('span'); medal.className = 'podium-medal'; medal.textContent = rank === 1 ? '🏆' : rank === 2 ? '🥈' : '🥉';
+    const name = document.createElement('strong'); name.textContent = bgTeamName(team.name);
+    const points = document.createElement('small'); points.textContent = `${team.points} ТОЧКИ`;
+    const step = document.createElement('div'); step.className = 'podium-step'; step.textContent = rank;
+    slot.append(medal, name, points, step); return slot;
+  }));
+
+  element('finale-ranking').replaceChildren(...ranked.map((team, index) => {
+    const row = document.createElement('div');
+    const place = document.createElement('strong'); place.textContent = `${index + 1}. ${bgTeamName(team.name)}`;
+    const points = document.createElement('span'); points.textContent = `${team.points} ТОЧКИ`;
+    row.append(place, points); return row;
+  }));
+
+  element('finale-confetti').replaceChildren(...Array.from({ length: 48 }, (_, index) => {
+    const piece = document.createElement('i');
+    piece.style.setProperty('--x', `${(index * 37) % 101}vw`);
+    piece.style.setProperty('--delay', `${(index % 16) * .11}s`);
+    piece.style.setProperty('--fall', `${3.2 + (index % 7) * .28}s`);
+    piece.style.setProperty('--color', ['#42e8ff', '#18f065', '#f4fdff', '#ff313b'][index % 4]);
+    return piece;
+  }));
 }
 
 function renderCommunicationTabs(game) {
@@ -563,6 +614,13 @@ element('captain-panel-close').addEventListener('click', () => {
 
 element('captain-panel').addEventListener('click', (event) => {
   if (event.target === element('captain-panel')) element('captain-panel-close').click();
+});
+
+element('finale-close').addEventListener('click', () => {
+  state.finaleDismissed = true;
+  element('finale-overlay').classList.add('hidden');
+  state.activePanel = 'points';
+  if (state.game) renderTeams(state.game);
 });
 
 document.addEventListener('keydown', (event) => {

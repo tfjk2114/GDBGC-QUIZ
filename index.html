@@ -11,6 +11,17 @@
   </head>
   <body>
     <div id="global-timer" class="global-timer hidden" role="timer" aria-live="polite"><span id="global-timer-label">Оставащо време</span><strong id="global-timer-value">30</strong></div>
+    <section id="finale-overlay" class="finale-overlay hidden" aria-live="polite">
+      <div id="finale-confetti" class="finale-confetti" aria-hidden="true"></div>
+      <div class="finale-content">
+        <p class="eyebrow">Финално класиране</p>
+        <h1>ПОБЕДИТЕЛИ</h1>
+        <p id="finale-winner" class="finale-winner"></p>
+        <div id="finale-podium" class="finale-podium"></div>
+        <div id="finale-ranking" class="finale-ranking"></div>
+        <button id="finale-close" class="button button-primary" type="button">Виж цялото табло</button>
+      </div>
+    </section>
     <div class="page-shell">
       <header class="site-header">
         <a class="brand" href="./" aria-label="Начало на GDBGC Викторина">

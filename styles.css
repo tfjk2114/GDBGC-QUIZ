@@ -32,6 +32,28 @@ a { color: var(--accent); }
 .global-timer strong { min-width: 30px; color: #fff; font-family: ui-monospace, monospace; font-size: 1.15rem; text-align: center; }
 .global-timer.timer-expired { border-color: var(--danger); color: var(--danger); box-shadow: 0 0 24px rgba(255,49,59,.3); }
 body:has(.global-timer:not(.hidden)) .site-header { padding-top: 54px; }
+.finale-overlay { position: fixed; inset: 0; z-index: 100; overflow-y: auto; background: radial-gradient(circle at 50% 12%, rgba(66,232,255,.28), transparent 32rem), linear-gradient(160deg, rgba(1,8,12,.98), rgba(2,29,36,.99)); }
+.finale-content { position: relative; z-index: 2; display: grid; width: min(920px, calc(100% - 28px)); min-height: 100vh; margin: auto; padding: clamp(36px, 7vh, 76px) 0 42px; align-content: center; justify-items: center; text-align: center; }
+.finale-content h1 { color: #fff; font-size: clamp(2.5rem, 9vw, 6rem); text-shadow: 0 0 28px rgba(66,232,255,.48); }
+.finale-winner { margin: 12px 0 28px; color: var(--green); font-size: clamp(1.1rem, 3vw, 1.8rem); font-weight: 950; opacity: 0; animation: finale-pop .7s 3.5s forwards; }
+.finale-podium { display: grid; width: min(760px, 100%); grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: end; }
+.finale-podium:has(.podium-slot:only-child) { width: min(280px, 100%); grid-template-columns: 1fr; }
+.podium-slot { --team-color: var(--accent); display: grid; min-width: 0; gap: 8px; justify-items: center; opacity: 0; transform: translateY(70px) scale(.88); animation: podium-rise .7s var(--reveal-delay) cubic-bezier(.2,.9,.25,1.25) forwards; }
+.podium-medal { font-size: clamp(2rem, 7vw, 4rem); filter: drop-shadow(0 0 14px color-mix(in srgb, var(--team-color) 65%, transparent)); }
+.podium-slot strong { max-width: 100%; color: #fff; font-size: clamp(.82rem, 2.8vw, 1.35rem); overflow-wrap: anywhere; }
+.podium-slot small { color: var(--team-color); font-weight: 900; }
+.podium-step { display: grid; width: 100%; height: 110px; place-items: start center; padding-top: 18px; border: 2px solid var(--team-color); border-bottom: 0; border-radius: 12px 12px 0 0; background: linear-gradient(180deg, color-mix(in srgb, var(--team-color) 28%, #03151d), #03151d); color: var(--team-color); font-family: ui-monospace, monospace; font-size: 2rem; font-weight: 950; box-shadow: 0 0 28px color-mix(in srgb, var(--team-color) 18%, transparent); }
+.podium-rank-1 .podium-step { height: 190px; padding-top: 24px; font-size: 3rem; }
+.podium-rank-2 .podium-step { height: 145px; }
+.finale-ranking { display: grid; width: min(620px, 100%); gap: 7px; margin: 22px 0; opacity: 0; animation: finale-pop .5s 4.1s forwards; }
+.finale-ranking div { display: flex; justify-content: space-between; gap: 16px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(2,17,24,.72); font-size: .78rem; }
+.finale-ranking span { color: var(--accent); font-weight: 900; white-space: nowrap; }
+.finale-content > .button { opacity: 0; animation: finale-pop .5s 4.3s forwards; }
+.finale-confetti { position: fixed; inset: 0; z-index: 1; overflow: hidden; pointer-events: none; }
+.finale-confetti i { position: absolute; top: -24px; left: var(--x); width: 9px; height: 18px; background: var(--color); opacity: 0; animation: confetti-fall var(--fall) var(--delay) linear 2; }
+@keyframes podium-rise { to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes finale-pop { from { opacity: 0; transform: scale(.86); } to { opacity: 1; transform: scale(1); } }
+@keyframes confetti-fall { 0% { opacity: 1; transform: translateY(-5vh) rotate(0deg); } 100% { opacity: .9; transform: translateY(110vh) rotate(720deg); } }
 
 .site-header { display: flex; align-items: center; justify-content: space-between; min-height: 86px; }
 .brand { display: flex; gap: 12px; align-items: center; color: var(--text); font-weight: 850; text-decoration: none; }
@@ -210,5 +232,11 @@ footer { display: flex; flex-wrap: wrap; gap: 9px; justify-content: center; min-
   .game-info-tabs button { min-height: 46px; padding: 6px 3px; font-size: .72rem; }
   .category-strip { gap: 5px; overflow-x: auto; justify-content: flex-start; padding-bottom: 5px; }
   .category-strip span { flex: 0 0 29px; width: 29px; height: 29px; }
+  .finale-content { align-content: start; padding-top: 48px; }
+  .finale-podium { gap: 5px; }
+  .podium-step { height: 85px; }
+  .podium-rank-1 .podium-step { height: 145px; }
+  .podium-rank-2 .podium-step { height: 110px; }
+  .finale-ranking { margin-top: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }

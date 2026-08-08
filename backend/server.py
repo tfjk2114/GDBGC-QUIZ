@@ -28,6 +28,21 @@ ALLOWED_ORIGINS = {
 LOCK = threading.RLock()
 STARTED_AT = time.monotonic()
 
+# Generated once. The first question in each category remains in place; slots 2–10
+# use this same shuffled order for every new game and every server restart.
+FIXED_QUESTION_ORDER = [
+    0, 8, 2, 5, 7, 4, 9, 3, 1, 6,
+    10, 12, 19, 13, 14, 15, 11, 16, 18, 17,
+    20, 24, 23, 22, 26, 27, 28, 21, 25, 29,
+    30, 37, 36, 34, 38, 31, 35, 33, 39, 32,
+    40, 46, 42, 45, 47, 41, 49, 43, 44, 48,
+    50, 58, 53, 56, 51, 57, 54, 52, 55, 59,
+    60, 68, 64, 69, 63, 65, 62, 66, 67, 61,
+    70, 77, 76, 75, 72, 78, 74, 73, 71, 79,
+    80, 84, 85, 89, 87, 88, 81, 82, 83, 86,
+    90, 94, 92, 98, 95, 99, 91, 93, 97, 96,
+]
+
 def load_quiz_data():
     payload = json.loads(QUIZ_DATA_PATH.read_text(encoding="utf-8"))
     categories = payload.get("categories")
@@ -68,6 +83,7 @@ def default_game(teams=None, game_mode="full"):
         "phase": "lobby",
         "gameMode": game_mode,
         "currentQuestionIndex": 0,
+        "questionOrder": list(FIXED_QUESTION_ORDER),
         "testCompleted": False,
         "test": None,
         "captains": {},
@@ -102,6 +118,14 @@ def load_game():
         if game.get("schemaVersion") != 5 or len(game.get("teams", [])) != 4:
             raise ValueError("Невалидна версия на играта")
         game.setdefault("gameMode", "full")
+        game.setdefault("questionOrder", list(range(100)))
+        order = game["questionOrder"]
+        if not isinstance(order, list) or len(order) != 100 or set(order) != set(range(100)):
+            raise ValueError("Невалиден ред на въпросите")
+        for category_index in range(10):
+            category_order = order[category_index * 10:(category_index + 1) * 10]
+            if category_order[0] != category_index * 10 or any(item // 10 != category_index for item in category_order):
+                raise ValueError("Невалиден ред в категория")
         game.setdefault("captainHistory", {})
         game.setdefault("captainVotes", {})
         game.setdefault("teamAnswers", {})
@@ -139,7 +163,25 @@ def current_category_index():
 def current_question():
     if GAME["currentQuestionIndex"] >= len(QUESTIONS):
         return None
-    return QUESTIONS[GAME["currentQuestionIndex"]]
+    return question_for_slot(GAME["currentQuestionIndex"])
+
+
+def question_for_slot(slot_index):
+    source_index = GAME.get("questionOrder", list(range(100)))[slot_index]
+    source = QUESTIONS[source_index]
+    media = []
+    for item in source.get("media", []):
+        copied = dict(item)
+        if copied.get("alt", "").startswith("Attachment for question"):
+            copied["alt"] = f"Attachment for question {slot_index + 1}"
+        media.append(copied)
+    return {
+        **source,
+        "id": f"question-{slot_index + 1}",
+        "number": slot_index + 1,
+        "categoryIndex": slot_index // 10,
+        "media": media,
+    }
 
 
 def question_for_player(question):
@@ -163,7 +205,7 @@ def question_for_player(question):
 
 
 def question_bank_for_host():
-    return [question_for_player(question) for question in QUESTIONS]
+    return [question_for_player(question_for_slot(index)) for index in range(100)]
 
 
 def captain_for(team):
@@ -370,7 +412,7 @@ def clean_text(value, maximum):
 
 
 class QuizHandler(BaseHTTPRequestHandler):
-    server_version = "GDBGCQuiz/12.0"
+    server_version = "GDBGCQuiz/13.0"
 
     def log_message(self, message, *args):
         print(f"{self.address_string()} - {message % args}", flush=True)
@@ -422,7 +464,7 @@ class QuizHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/health":
-            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 12, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
+            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 13, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
         elif path == "/api/game":
             with LOCK:
                 if expire_timer_if_needed():
