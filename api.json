@@ -1,5 +1,5 @@
 {
-  "online": false,
-  "apiBase": "",
-  "updatedAt": "2026-08-09T16:30:02.854949+00:00"
+  "online": true,
+  "apiBase": "https://detective-ste-dedicated-moral.trycloudflare.com",
+  "updatedAt": "2026-08-09T16:30:42.219173+00:00"
 }
