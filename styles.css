@@ -246,3 +246,6 @@ footer { display: flex; flex-wrap: wrap; gap: 9px; justify-content: center; min-
   .finale-ranking { margin-top: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+.player-queue-panel { text-align: center; padding: clamp(28px, 7vw, 56px); }
+.player-queue-panel h2 { margin: 8px 0 12px; }
+.player-queue-panel strong { display: inline-block; margin-top: 14px; color: var(--cyan, #42e8ff); }

@@ -6,9 +6,9 @@
     <meta name="robots" content="noindex, nofollow">
     <title>GDBGC Quiz — Host Control</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%AF%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="styles.css?v=14">
-    <link rel="stylesheet" href="host.css?v=16">
-    <script src="host.js?v=17" defer></script>
+    <link rel="stylesheet" href="styles.css?v=18">
+    <link rel="stylesheet" href="host.css?v=18">
+    <script src="host.js?v=18" defer></script>
   </head>
   <body class="host-body">
     <div class="page-shell">
@@ -83,6 +83,11 @@
                 <p id="roster-count" class="helper"></p>
                 <p class="helper">Type a name to reserve a seat. The player claims that exact seat by joining with the same name.</p>
                 <div id="team-editor" class="team-editor"></div>
+                <div class="waiting-queue">
+                  <h3>Waiting queue</h3>
+                  <p class="helper">Players who join after the standard game starts appear here.</p>
+                  <div id="player-queue"></div>
+                </div>
               </section>
 
               <section class="card question-bank-card host-detail-panel hidden" data-host-section="questions">

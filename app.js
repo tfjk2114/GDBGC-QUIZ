@@ -126,6 +126,10 @@ function isPregame(phase) {
 }
 
 function updatePlayerLabel() {
+  if (state.player?.queued) {
+    element('player-label').textContent = `${state.player.name} · Опашка`;
+    return;
+  }
   const role = state.player?.isCaptain ? ' · Капитан' : state.player?.isAnswerer ? ' · Отговаря' : '';
   element('player-label').textContent = `${state.player.name} · ${bgTeamName(state.player.teamName)}${role}`;
 }
@@ -136,6 +140,18 @@ function activeTeams(game) {
 
 function renderGame() {
   const game = state.game;
+  const queued = Boolean(state.player?.queued);
+  element('player-queue-panel').classList.toggle('hidden', !queued);
+  if (queued) {
+    element('player-queue-position').textContent = `Позиция в опашката: ${state.player.queuePosition || 1}`;
+    element('category-kicker').textContent = 'Играта вече е започнала';
+    element('category-name').textContent = 'ИЗЧАКВАНЕ ЗА ОТБОР';
+    for (const id of ['question-counter', 'game-progress-track', 'category-strip', 'question-box', 'captain-vote-panel', 'answer-reveal-panel', 'captain-responses-panel', 'game-info-tabs', 'team-grid', 'captain-action', 'captain-panel', 'finale-overlay']) {
+      element(id)?.classList.add('hidden');
+    }
+    state.activePanel = null;
+    return;
+  }
   const pregame = isPregame(game.phase);
   element('question-counter').classList.toggle('hidden', pregame);
   element('game-progress-track').classList.toggle('hidden', pregame);

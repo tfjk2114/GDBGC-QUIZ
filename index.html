@@ -6,8 +6,8 @@
     <meta name="description" content="Играта на живо за отборната викторина GDBGC.">
     <title>GDBGC Викторина — Игра на живо</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%AF%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="styles.css?v=14">
-    <script src="app.js?v=17" defer></script>
+    <link rel="stylesheet" href="styles.css?v=18">
+    <script src="app.js?v=18" defer></script>
   </head>
   <body>
     <div id="global-timer" class="global-timer hidden" role="timer" aria-live="polite"><span id="global-timer-label">Оставащо време</span><strong id="global-timer-value">30</strong></div>
@@ -71,6 +71,13 @@
 
           <div id="game-progress-track" class="progress-track" aria-hidden="true"><span id="game-progress"></span></div>
 
+          <section id="player-queue-panel" class="card player-queue-panel hidden" aria-live="polite">
+            <p class="eyebrow">Изчакване</p>
+            <h2>Чакаш разпределение в отбор</h2>
+            <p>Водещият вижда, че си в опашката, и може да те добави към свободно място.</p>
+            <strong id="player-queue-position"></strong>
+          </section>
+
           <section id="captain-vote-panel" class="card captain-vote-panel hidden" aria-live="polite">
             <p class="eyebrow">Избор на капитан</p>
             <h2>Гласувай за капитан</h2>
@@ -96,7 +103,7 @@
             <div id="captain-responses-grid" class="captain-responses-grid"></div>
           </section>
 
-          <nav class="game-info-tabs" aria-label="Информация за играта">
+          <nav id="game-info-tabs" class="game-info-tabs" aria-label="Информация за играта">
             <button type="button" data-player-panel="points" aria-pressed="false">🏆 <span>Точки</span></button>
             <button type="button" data-player-panel="bets" aria-pressed="false">🎲 <span>Залози</span></button>
             <button type="button" data-player-panel="teams" aria-pressed="false">👥 <span>Отбори</span></button>

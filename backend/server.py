@@ -95,6 +95,8 @@ def default_game(teams=None, game_mode="full"):
         "results": {},
         "teamAnswers": {},
         "suggestions": {},
+        "playerQueue": [],
+        "activeTeamIds": [],
         "timer": {"duration": 30, "running": False, "startedAt": None, "deadline": None, "expired": False},
         "teams": teams or default_teams(),
     }
@@ -131,6 +133,8 @@ def load_game():
         game.setdefault("captainVotes", {})
         game.setdefault("teamAnswers", {})
         game.setdefault("suggestions", {})
+        game.setdefault("playerQueue", [])
+        game.setdefault("activeTeamIds", [])
         game.setdefault("timer", {"duration": 30, "running": False, "startedAt": None, "deadline": None, "expired": False})
         for team in game["teams"]:
             team.setdefault("requiredPlayers", 4)
@@ -234,6 +238,9 @@ def required_players_for(team):
 def active_teams():
     if game_mode() == "duo":
         return GAME["teams"][:2]
+    frozen_ids = set(GAME.get("activeTeamIds", []))
+    if frozen_ids and GAME.get("phase") not in {"lobby", "test_question", "test_result"}:
+        return [team for team in GAME["teams"] if team["id"] in frozen_ids]
     participating = [team for team in GAME["teams"] if connected_player_indices(team)]
     return participating
 
@@ -311,6 +318,21 @@ def find_player_by_token(token):
     return None
 
 
+def find_queued_by_token(token):
+    if not token:
+        return None
+    digest = token_hash(token)
+    for index, queued in enumerate(GAME.get("playerQueue", [])):
+        stored = queued.get("tokenHash", "")
+        if stored and hmac.compare_digest(stored, digest):
+            return index, queued
+    return None
+
+
+def first_open_seat(team):
+    return next((index for index in range(required_players_for(team)) if not team["players"][index]), None)
+
+
 def timer_for_client():
     timer = GAME.get("timer", {})
     return {
@@ -382,6 +404,7 @@ def public_game():
         "playerCount": player_count(),
         "playerCapacity": player_capacity(),
         "gameMode": game_mode(),
+        "queueCount": len(GAME.get("playerQueue", [])),
         "testCompleted": GAME["testCompleted"],
         "test": GAME["test"] if phase in {"test_question", "test_result"} else None,
         "timer": timer_for_client(),
@@ -401,6 +424,7 @@ def host_game():
         {
             **public_team,
             "usedWagers": next(team["usedWagers"] for team in GAME["teams"] if team["id"] == public_team["id"]),
+            "connectedPlayers": connected_player_indices(next(team for team in GAME["teams"] if team["id"] == public_team["id"])),
         }
         for public_team in view["teams"]
     ]
@@ -409,6 +433,10 @@ def host_game():
     view["results"] = GAME["results"]
     view["teamAnswers"] = GAME["teamAnswers"]
     view["questionBank"] = question_bank_for_host()
+    view["playerQueue"] = [
+        {"id": queued["id"], "name": queued["name"], "joinedAt": queued["joinedAt"]}
+        for queued in GAME.get("playerQueue", [])
+    ]
     if view.get("question"):
         view["question"]["answer"] = question_for_player(current_question())["answer"]
     return view
@@ -433,7 +461,7 @@ def clean_text(value, maximum):
 
 
 class QuizHandler(BaseHTTPRequestHandler):
-    server_version = "GDBGCQuiz/16.0"
+    server_version = "GDBGCQuiz/17.0"
 
     def log_message(self, message, *args):
         print(f"{self.address_string()} - {message % args}", flush=True)
@@ -485,7 +513,7 @@ class QuizHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/health":
-            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 16, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
+            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 17, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
         elif path == "/api/game":
             with LOCK:
                 if expire_timer_if_needed():
@@ -497,7 +525,12 @@ class QuizHandler(BaseHTTPRequestHandler):
                     save_game()
                 identity = find_player_by_token(self.player_token())
                 if not identity:
-                    self.send_json(401, {"error": "Сесията на играча не е валидна"})
+                    queued_identity = find_queued_by_token(self.player_token())
+                    if queued_identity:
+                        queue_index, queued = queued_identity
+                        self.send_json(200, {"name": queued["name"], "queued": True, "queuePosition": queue_index + 1})
+                    else:
+                        self.send_json(401, {"error": "Сесията на играча не е валидна"})
                 else:
                     team_index, player_index = identity
                     team = GAME["teams"][team_index]
@@ -573,6 +606,10 @@ class QuizHandler(BaseHTTPRequestHandler):
                     self.set_game_mode(payload)
                 elif path == "/api/host/players/randomize":
                     self.randomize_players()
+                elif path == "/api/host/players/move":
+                    self.move_player(payload)
+                elif path == "/api/host/players/assign":
+                    self.assign_queued_player(payload)
                 elif path == "/api/host/test/start":
                     self.start_test()
                 elif path == "/api/host/test/score":
@@ -604,8 +641,6 @@ class QuizHandler(BaseHTTPRequestHandler):
             self.send_json(400, {"error": str(error)})
 
     def join_player(self, payload):
-        if GAME["phase"] not in {"lobby", "test_question", "test_result"}:
-            raise ValueError("Играта вече е започнала")
         name = clean_label(payload.get("name"), "", 28)
         if not name:
             raise ValueError("Въведете име")
@@ -618,6 +653,31 @@ class QuizHandler(BaseHTTPRequestHandler):
             ),
             None,
         )
+        queued_duplicate = next(
+            (queued for queued in GAME.get("playerQueue", []) if queued["name"].casefold() == name.casefold()),
+            None,
+        )
+        pregame = GAME["phase"] in {"lobby", "test_question", "test_result"}
+        if not pregame:
+            if game_mode() != "full" or GAME["phase"] == "finished":
+                raise ValueError("Играта вече е започнала")
+            if existing or queued_duplicate:
+                raise ValueError("Вече има играч с това име")
+            if len(GAME.get("playerQueue", [])) >= 50:
+                raise ValueError("Опашката за играчи е пълна")
+            token = secrets.token_urlsafe(32)
+            queued = {
+                "id": secrets.token_hex(8),
+                "name": name,
+                "tokenHash": token_hash(token),
+                "joinedAt": round(time.time() * 1000),
+            }
+            GAME.setdefault("playerQueue", []).append(queued)
+            return {
+                "token": token,
+                "player": {"name": name, "queued": True, "queuePosition": len(GAME["playerQueue"])},
+                "game": public_game(),
+            }
         if existing:
             team_index, player_index = existing
             team = GAME["teams"][team_index]
@@ -663,6 +723,11 @@ class QuizHandler(BaseHTTPRequestHandler):
         }
 
     def leave_player(self):
+        queued_identity = find_queued_by_token(self.player_token())
+        if queued_identity:
+            queue_index, _ = queued_identity
+            del GAME["playerQueue"][queue_index]
+            return {"left": True, "game": public_game()}
         if GAME["phase"] not in {"lobby", "test_question", "test_result"}:
             raise ValueError("Не можете да напуснете след началото на играта")
         identity = find_player_by_token(self.player_token())
@@ -822,6 +887,64 @@ class QuizHandler(BaseHTTPRequestHandler):
             team["players"][seat] = player
             team["playerTokens"][seat] = token
 
+    def move_player(self, payload):
+        if game_mode() != "full":
+            raise ValueError("Player transfers are only available in standard team mode")
+        source_id = payload.get("sourceTeamId")
+        target_id = payload.get("targetTeamId")
+        player_index = payload.get("playerIndex")
+        if source_id == target_id:
+            raise ValueError("Choose a different team")
+        if isinstance(player_index, bool) or not isinstance(player_index, int) or not 0 <= player_index < 4:
+            raise ValueError("Invalid player seat")
+        source = next((team for team in GAME["teams"] if team["id"] == source_id), None)
+        target = next((team for team in GAME["teams"] if team["id"] == target_id), None)
+        if not source or not target or not source["players"][player_index] or not source["playerTokens"][player_index]:
+            raise ValueError("That connected player was not found")
+        pregame = GAME["phase"] in {"lobby", "test_question", "test_result"}
+        if not pregame:
+            participating = set(GAME.get("activeTeamIds", []))
+            if source_id not in participating or target_id not in participating:
+                raise ValueError("Players can only move between participating teams after the start")
+            if GAME["phase"] == "captain_vote":
+                raise ValueError("Wait until captain voting is complete before moving a player")
+            if GAME["captains"].get(source_id) == player_index:
+                raise ValueError("The current captain cannot move during a round")
+            if len(connected_player_indices(source)) <= 1:
+                raise ValueError("A participating team must keep at least one active player")
+        target_index = first_open_seat(target)
+        if target_index is None:
+            raise ValueError(f"{target['name']} has no open required seat")
+        target["players"][target_index] = source["players"][player_index]
+        target["playerTokens"][target_index] = source["playerTokens"][player_index]
+        source["players"][player_index] = ""
+        source["playerTokens"][player_index] = ""
+        for team_id, seat in ((source_id, player_index), (target_id, target_index)):
+            GAME.setdefault("captainHistory", {})[team_id] = [
+                prior for prior in GAME["captainHistory"].get(team_id, []) if prior != seat
+            ]
+
+    def assign_queued_player(self, payload):
+        if game_mode() != "full" or GAME["phase"] in {"lobby", "test_question", "test_result", "finished"}:
+            raise ValueError("The waiting queue is only available during a standard game")
+        queue_id = payload.get("queueId")
+        queue_index = next((index for index, queued in enumerate(GAME.get("playerQueue", [])) if queued["id"] == queue_id), None)
+        if queue_index is None:
+            raise ValueError("That queued player was not found")
+        target_id = payload.get("targetTeamId")
+        target = next((team for team in GAME["teams"] if team["id"] == target_id), None)
+        if not target or target_id not in set(GAME.get("activeTeamIds", [])):
+            raise ValueError("Choose a participating team")
+        target_index = first_open_seat(target)
+        if target_index is None:
+            raise ValueError(f"{target['name']} has no open required seat")
+        queued = GAME["playerQueue"].pop(queue_index)
+        target["players"][target_index] = queued["name"]
+        target["playerTokens"][target_index] = queued["tokenHash"]
+        GAME.setdefault("captainHistory", {})[target_id] = [
+            prior for prior in GAME["captainHistory"].get(target_id, []) if prior != target_index
+        ]
+
     def set_game_mode(self, payload):
         if GAME["phase"] != "lobby":
             raise ValueError("Game mode can only be changed from the lobby")
@@ -851,6 +974,8 @@ class QuizHandler(BaseHTTPRequestHandler):
         GAME["results"] = {}
         GAME["teamAnswers"] = {}
         GAME["suggestions"] = {}
+        GAME["playerQueue"] = []
+        GAME["activeTeamIds"] = []
         clear_running_timer()
 
     def start_test(self):
@@ -901,6 +1026,8 @@ class QuizHandler(BaseHTTPRequestHandler):
             raise ValueError("Exactly two players must join the head-to-head mode")
         if game_mode() == "full" and player_count() < 1:
             raise ValueError("At least one player must join")
+        GAME["activeTeamIds"] = [team["id"] for team in active_teams()]
+        GAME["playerQueue"] = []
         GAME["captains"] = {}
         GAME["captainVotes"] = {}
         GAME["test"] = None

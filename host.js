@@ -131,9 +131,10 @@ function render() {
   modeButton.disabled = game.phase !== 'lobby' || (game.gameMode !== 'duo' && game.playerCount > 2);
   modeButton.title = game.phase !== 'lobby' ? 'Reset or return to the lobby to change modes' : modeButton.disabled ? 'Remove players until no more than two remain' : '';
   element('roster-title').textContent = game.gameMode === 'duo' ? 'Two players on two teams' : 'Adjustable team sizes';
-  element('roster-count').textContent = game.gameMode === 'duo' ? `${game.playerCount}/2 seats filled. Each player has a separate team.` : `${game.playerCount}/${game.playerCapacity} required seats filled. The quiz can still start early.`;
+  element('roster-count').textContent = game.gameMode === 'duo' ? `${game.playerCount}/2 seats filled. Each player has a separate team.` : `${game.playerCount}/${game.playerCapacity} required seats filled. ${game.queueCount || 0} waiting. The quiz can still start early.`;
   renderRound(game);
   renderTeams(game);
+  renderPlayerQueue(game);
   renderPoints(game);
   renderHostBets(game);
   renderQuestionBank(game);
@@ -488,7 +489,25 @@ function renderTeams(game) {
       remove.disabled = !canChangePlayers || !input.value;
       input.addEventListener('input', () => { remove.disabled = !canChangePlayers || !input.value; });
       remove.addEventListener('click', () => { input.value = ''; remove.disabled = true; input.focus(); });
-      row.append(input, remove); players.append(row);
+      row.append(input, remove);
+      if (game.gameMode === 'full' && (team.connectedPlayers || []).includes(playerIndex)) {
+        const moveControls = document.createElement('div'); moveControls.className = 'move-player-controls';
+        const target = document.createElement('select');
+        const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = 'Move to…'; target.append(placeholder);
+        for (const candidate of game.teams.filter((item) => item.id !== team.id && (canChangePlayers || item.active !== false))) {
+          const option = document.createElement('option'); option.value = candidate.id; option.textContent = candidate.name; target.append(option);
+        }
+        const move = document.createElement('button'); move.type = 'button'; move.className = 'move-player'; move.textContent = 'Move';
+        move.disabled = game.phase === 'captain_vote';
+        move.addEventListener('click', async () => {
+          if (!target.value) return message('Choose a destination team.', true);
+          move.disabled = true;
+          try { await post('/api/host/players/move', { sourceTeamId: team.id, playerIndex, targetTeamId: target.value }); }
+          finally { move.disabled = false; }
+        });
+        moveControls.append(target, move); row.append(moveControls);
+      }
+      players.append(row);
     }
     const resize = (delta) => {
       const current = Number(card.dataset.requiredPlayers);
@@ -508,6 +527,32 @@ function renderTeams(game) {
     return card;
   });
   element('team-editor').replaceChildren(...cards);
+}
+
+function renderPlayerQueue(game) {
+  const container = element('player-queue');
+  if (!container) return;
+  const queue = game.playerQueue || [];
+  if (game.gameMode !== 'full' || !queue.length) {
+    const empty = document.createElement('p'); empty.className = 'helper queue-empty';
+    empty.textContent = game.gameMode === 'full' ? 'No players are waiting.' : 'The waiting queue is disabled in 2-player mode.';
+    container.replaceChildren(empty); return;
+  }
+  const eligibleTeams = game.teams.filter((team) => team.active !== false && team.players.slice(0, team.requiredPlayers || 4).some((name) => !name));
+  container.replaceChildren(...queue.map((queued, index) => {
+    const row = document.createElement('div'); row.className = 'queue-player-row';
+    const name = document.createElement('strong'); name.textContent = `${index + 1}. ${queued.name}`;
+    const actions = document.createElement('div'); actions.className = 'queue-team-actions';
+    for (const team of eligibleTeams) {
+      const button = document.createElement('button'); button.type = 'button'; button.textContent = `Add to ${team.name}`;
+      button.addEventListener('click', () => post('/api/host/players/assign', { queueId: queued.id, targetTeamId: team.id }));
+      actions.append(button);
+    }
+    if (!eligibleTeams.length) {
+      const full = document.createElement('small'); full.textContent = 'No participating team has an open required seat.'; actions.append(full);
+    }
+    row.append(name, actions); return row;
+  }));
 }
 
 function updateTeamSizeCard(card, mode, canChangePlayers) {
