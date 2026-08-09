@@ -69,6 +69,7 @@ def default_teams():
             "name": f"Team {index + 1}",
             "players": ["" for _ in range(4)],
             "playerTokens": ["" for _ in range(4)],
+            "requiredPlayers": 4,
             "points": 0,
             "usedWagers": [],
         }
@@ -131,6 +132,8 @@ def load_game():
         game.setdefault("teamAnswers", {})
         game.setdefault("suggestions", {})
         game.setdefault("timer", {"duration": 30, "running": False, "startedAt": None, "deadline": None, "expired": False})
+        for team in game["teams"]:
+            team.setdefault("requiredPlayers", 4)
         return game
     except (FileNotFoundError, json.JSONDecodeError, ValueError):
         game = default_game()
@@ -220,13 +223,18 @@ def game_mode():
 
 
 def player_capacity():
-    return 2 if game_mode() == "duo" else 16
+    return 2 if game_mode() == "duo" else sum(required_players_for(team) for team in GAME["teams"])
+
+
+def required_players_for(team):
+    value = team.get("requiredPlayers", 4)
+    return value if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 4 else 4
 
 
 def active_teams():
     if game_mode() == "duo":
         return GAME["teams"][:2]
-    participating = [team for team in GAME["teams"] if any(team["players"])]
+    participating = [team for team in GAME["teams"] if connected_player_indices(team)]
     return participating
 
 
@@ -235,7 +243,7 @@ def answerer_for(team):
 
 
 def eligible_captain_indices(team):
-    filled = [index for index, player in enumerate(team["players"]) if player]
+    filled = connected_player_indices(team)
     recent = GAME.get("captainHistory", {}).get(team["id"], [])[-1:]
     eligible = [index for index in filled if index not in recent]
     return eligible or filled
@@ -243,7 +251,7 @@ def eligible_captain_indices(team):
 
 def captain_vote_progress(team):
     votes = GAME.get("captainVotes", {}).get(team["id"], {})
-    filled = [index for index, player in enumerate(team["players"]) if player]
+    filled = connected_player_indices(team)
     return sum(str(index) in votes for index in filled), len(filled)
 
 
@@ -268,7 +276,18 @@ def finalize_captain_vote_if_ready():
 
 
 def player_count():
-    return sum(1 for team in GAME["teams"] for player in team["players"] if player)
+    if game_mode() == "duo":
+        return sum(bool(connected_player_indices(team)) for team in GAME["teams"][:2])
+    return sum(len(connected_player_indices(team)) for team in GAME["teams"])
+
+
+def connected_player_indices(team):
+    required = 1 if game_mode() == "duo" and team in GAME["teams"][:2] else required_players_for(team)
+    tokens = team.get("playerTokens", ["", "", "", ""])
+    return [
+        index for index, player in enumerate(team["players"][:required])
+        if player and index < len(tokens) and tokens[index]
+    ]
 
 
 def token_hash(token):
@@ -328,6 +347,7 @@ def public_game():
             "id": team["id"],
             "name": team["name"],
             "players": team["players"],
+            "requiredPlayers": 1 if game_mode() == "duo" and team in GAME["teams"][:2] else required_players_for(team),
             "points": team["points"],
             "usedWagerCount": len(team["usedWagers"]),
             "captain": captain_for(team),
@@ -407,7 +427,7 @@ def clean_text(value, maximum):
 
 
 class QuizHandler(BaseHTTPRequestHandler):
-    server_version = "GDBGCQuiz/14.0"
+    server_version = "GDBGCQuiz/15.0"
 
     def log_message(self, message, *args):
         print(f"{self.address_string()} - {message % args}", flush=True)
@@ -459,7 +479,7 @@ class QuizHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/health":
-            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 14, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
+            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 15, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
         elif path == "/api/game":
             with LOCK:
                 if expire_timer_if_needed():
@@ -583,9 +603,31 @@ class QuizHandler(BaseHTTPRequestHandler):
         name = clean_label(payload.get("name"), "", 28)
         if not name:
             raise ValueError("Въведете име")
-        existing_names = [player.casefold() for team in GAME["teams"] for player in team["players"] if player]
-        if name.casefold() in existing_names:
-            raise ValueError("Вече има играч с това име")
+        existing = next(
+            (
+                (team_index, player_index)
+                for team_index, team in enumerate(GAME["teams"])
+                for player_index, player in enumerate(team["players"])
+                if player and player.casefold() == name.casefold()
+            ),
+            None,
+        )
+        if existing:
+            team_index, player_index = existing
+            team = GAME["teams"][team_index]
+            tokens = team.setdefault("playerTokens", ["", "", "", ""])
+            if tokens[player_index]:
+                raise ValueError("Вече има играч с това име")
+            allowed = team_index < 2 and player_index == 0 if game_mode() == "duo" else player_index < required_players_for(team)
+            if not allowed:
+                raise ValueError("Запазеното място вече не е активно")
+            token = secrets.token_urlsafe(32)
+            tokens[player_index] = token_hash(token)
+            return {
+                "token": token,
+                "player": {"name": name, "teamId": team["id"], "teamName": team["name"], "playerIndex": player_index},
+                "game": public_game(),
+            }
         capacity = player_capacity()
         if player_count() >= capacity:
             raise ValueError(f"Всички {capacity} места вече са заети")
@@ -596,12 +638,15 @@ class QuizHandler(BaseHTTPRequestHandler):
         else:
             available = []
             for team_index, team in enumerate(GAME["teams"]):
-                filled = sum(1 for player in team["players"] if player)
-                if filled < 4:
+                required = required_players_for(team)
+                filled = sum(1 for player in team["players"][:required] if player)
+                if filled < required:
                     available.append((filled, team_index))
+            if not available:
+                raise ValueError("Няма свободни места в отборите")
             _, team_index = min(available)
             team = GAME["teams"][team_index]
-            player_index = next(index for index, player in enumerate(team["players"]) if not player)
+            player_index = next(index for index, player in enumerate(team["players"][:required_players_for(team)]) if not player)
         token = secrets.token_urlsafe(32)
         team["players"][player_index] = name
         team.setdefault("playerTokens", ["", "", "", ""])[player_index] = token_hash(token)
@@ -719,10 +764,21 @@ class QuizHandler(BaseHTTPRequestHandler):
             if not isinstance(players, list) or len(players) != 4:
                 raise ValueError("Every team requires exactly four seats")
             team = GAME["teams"][index]
+            required = submitted.get("requiredPlayers", required_players_for(team))
+            if isinstance(required, bool) or not isinstance(required, int) or not 1 <= required <= 4:
+                raise ValueError("Required players must be between 1 and 4")
             team["name"] = clean_label(submitted.get("name"), f"Team {index + 1}")
             old_players = team["players"]
             cleaned_players = [clean_label(name, "", 28) for name in players]
+            if game_mode() != "duo" and any(cleaned_players[required:]):
+                raise ValueError(f"Remove players outside {team['name']}'s required seats first")
+            if GAME["phase"] not in {"lobby", "test_question", "test_result"}:
+                occupancy_changed = any(bool(old_players[seat]) != bool(cleaned_players[seat]) for seat in range(4))
+                if required != required_players_for(team) or occupancy_changed:
+                    raise ValueError("Players and required team sizes can only change before the quiz starts")
             team["players"] = cleaned_players
+            if game_mode() != "duo":
+                team["requiredPlayers"] = required
             tokens = team.setdefault("playerTokens", ["", "", "", ""])
             for seat, player in enumerate(cleaned_players):
                 if not player or not old_players[seat]:
@@ -745,9 +801,18 @@ class QuizHandler(BaseHTTPRequestHandler):
         for team in GAME["teams"]:
             team["players"] = ["", "", "", ""]
             team["playerTokens"] = ["", "", "", ""]
-        for index, (player, token) in enumerate(players):
-            team = GAME["teams"][index] if game_mode() == "duo" else GAME["teams"][index % 4]
-            seat = 0 if game_mode() == "duo" else index // 4
+        if game_mode() == "duo":
+            available_seats = [(GAME["teams"][index], 0) for index in range(2)]
+        else:
+            available_seats = [
+                (team, seat)
+                for seat in range(4)
+                for team in GAME["teams"]
+                if seat < required_players_for(team)
+            ]
+        if len(players) > len(available_seats):
+            raise ValueError("Increase the required team sizes before randomizing these players")
+        for (player, token), (team, seat) in zip(players, available_seats):
             team["players"][seat] = player
             team["playerTokens"][seat] = token
 
@@ -789,7 +854,7 @@ class QuizHandler(BaseHTTPRequestHandler):
             (team_index, player_index, player)
             for team_index, team in enumerate(active_teams())
             for player_index, player in enumerate(team["players"])
-            if player
+            if player_index in connected_player_indices(team)
         ]
         if not players:
             raise ValueError("At least one player must join")

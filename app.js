@@ -452,7 +452,7 @@ function renderTeams(game) {
 
     const players = document.createElement('div');
     players.className = 'player-chips';
-    for (const [playerIndex, player] of team.players.entries()) {
+    for (const [playerIndex, player] of team.players.slice(0, team.requiredPlayers ?? 4).entries()) {
       const chip = document.createElement('span');
       chip.textContent = player || 'Свободно място';
       if (!player) chip.classList.add('empty-seat');

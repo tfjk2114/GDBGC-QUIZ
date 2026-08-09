@@ -130,8 +130,8 @@ function render() {
   modeButton.textContent = game.gameMode === 'duo' ? 'Use team mode' : 'Enable 2-player head-to-head';
   modeButton.disabled = game.phase !== 'lobby' || (game.gameMode !== 'duo' && game.playerCount > 2);
   modeButton.title = game.phase !== 'lobby' ? 'Reset or return to the lobby to change modes' : modeButton.disabled ? 'Remove players until no more than two remain' : '';
-  element('roster-title').textContent = game.gameMode === 'duo' ? 'Two players on two teams' : 'Up to four teams of four';
-  element('roster-count').textContent = game.gameMode === 'duo' ? `${game.playerCount}/2 seats filled. Each player has a separate team.` : `${game.playerCount}/16 seats filled. The quiz can start before all seats are filled.`;
+  element('roster-title').textContent = game.gameMode === 'duo' ? 'Two players on two teams' : 'Adjustable team sizes';
+  element('roster-count').textContent = game.gameMode === 'duo' ? `${game.playerCount}/2 seats filled. Each player has a separate team.` : `${game.playerCount}/${game.playerCapacity} required seats filled. The quiz can still start early.`;
   renderRound(game);
   renderTeams(game);
   renderPoints(game);
@@ -461,23 +461,62 @@ function actionButton(label, handler, extraClass = '') {
 }
 
 function renderTeams(game) {
+  const canChangePlayers = isPregame(game.phase);
   const cards = game.teams.map((team, teamIndex) => {
     const card = document.createElement('div'); card.className = 'team-edit-card';
+    card.dataset.teamIndex = teamIndex;
+    card.dataset.requiredPlayers = game.gameMode === 'duo' ? 1 : (team.requiredPlayers || 4);
     if (game.gameMode === 'duo' && team.active === false) card.classList.add('hidden');
     const teamName = document.createElement('input');
     teamName.value = team.name; teamName.dataset.teamName = teamIndex; teamName.setAttribute('aria-label', `Team ${teamIndex + 1} name`);
+    const heading = document.createElement('div'); heading.className = 'team-edit-heading';
+    const sizeControl = document.createElement('div'); sizeControl.className = 'team-size-control';
+    const minus = document.createElement('button'); minus.type = 'button'; minus.textContent = '−'; minus.setAttribute('aria-label', `Reduce required players for ${team.name}`);
+    const required = document.createElement('strong'); required.className = 'team-required-count';
+    const plus = document.createElement('button'); plus.type = 'button'; plus.textContent = '+'; plus.setAttribute('aria-label', `Increase required players for ${team.name}`);
+    sizeControl.append(minus, required, plus); heading.append(teamName, sizeControl);
     const players = document.createElement('div'); players.className = 'player-fields';
     for (let playerIndex = 0; playerIndex < 4; playerIndex += 1) {
+      const row = document.createElement('div'); row.className = 'player-field-row'; row.dataset.playerSeat = playerIndex;
       const input = document.createElement('input');
       input.value = team.players[playerIndex] || '';
       input.placeholder = `Open seat ${playerIndex + 1}`;
       input.dataset.teamPlayer = `${teamIndex}:${playerIndex}`;
       input.setAttribute('aria-label', `${team.name}, player ${playerIndex + 1}`);
-      players.append(input);
+      const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'remove-player'; remove.textContent = 'Remove';
+      remove.setAttribute('aria-label', `Remove player from ${team.name}, seat ${playerIndex + 1}`);
+      remove.disabled = !canChangePlayers || !input.value;
+      input.addEventListener('input', () => { remove.disabled = !canChangePlayers || !input.value; });
+      remove.addEventListener('click', () => { input.value = ''; remove.disabled = true; input.focus(); });
+      row.append(input, remove); players.append(row);
     }
-    card.append(teamName, players); return card;
+    const resize = (delta) => {
+      const current = Number(card.dataset.requiredPlayers);
+      const next = Math.max(1, Math.min(4, current + delta));
+      if (next === current) return;
+      if (delta < 0) {
+        const removedSeat = card.querySelector(`[data-team-player="${teamIndex}:${current - 1}"]`);
+        if (removedSeat?.value) return message('Remove the player from the last seat before reducing the team size.', true);
+      }
+      card.dataset.requiredPlayers = next;
+      updateTeamSizeCard(card, game.gameMode, canChangePlayers);
+      if (delta > 0) card.querySelector(`[data-team-player="${teamIndex}:${next - 1}"]`)?.focus();
+    };
+    minus.addEventListener('click', () => resize(-1)); plus.addEventListener('click', () => resize(1));
+    card.append(heading, players);
+    updateTeamSizeCard(card, game.gameMode, canChangePlayers);
+    return card;
   });
   element('team-editor').replaceChildren(...cards);
+}
+
+function updateTeamSizeCard(card, mode, canChangePlayers) {
+  const required = Number(card.dataset.requiredPlayers);
+  card.querySelector('.team-required-count').textContent = `${required} required`;
+  const [minus, plus] = card.querySelectorAll('.team-size-control button');
+  minus.disabled = mode === 'duo' || !canChangePlayers || required <= 1;
+  plus.disabled = mode === 'duo' || !canChangePlayers || required >= 4;
+  card.querySelectorAll('[data-player-seat]').forEach((row) => row.classList.toggle('hidden', Number(row.dataset.playerSeat) >= required));
 }
 
 function renderPoints(game) {
@@ -526,7 +565,8 @@ element('logout-button').addEventListener('click', () => {
 element('save-teams').addEventListener('click', async () => {
   const teams = state.game.teams.map((team, teamIndex) => ({
     name: document.querySelector(`[data-team-name="${teamIndex}"]`).value,
-    players: [0, 1, 2, 3].map((playerIndex) => document.querySelector(`[data-team-player="${teamIndex}:${playerIndex}"]`).value)
+    players: [0, 1, 2, 3].map((playerIndex) => document.querySelector(`[data-team-player="${teamIndex}:${playerIndex}"]`).value),
+    requiredPlayers: Number(document.querySelector(`[data-team-index="${teamIndex}"]`).dataset.requiredPlayers)
   }));
   await post('/api/host/teams', { teams });
 });

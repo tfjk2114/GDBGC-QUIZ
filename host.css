@@ -49,7 +49,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .round-team strong { display: block; margin-bottom: 6px; }
 .round-team small { color: var(--muted); }
 .submitted-team-answer { min-height: 46px; margin: 10px 0; padding: 10px; border-left: 3px solid var(--pink); background: rgba(255,114,182,.08); color: var(--text); font-size: .86rem; font-weight: 800; line-height: 1.4; text-transform: uppercase; }
-.submitted-team-answer.is-received { border-left-color: var(--success); background: rgba(24,240,101,.1); }
+.submitted-team-answer.is-received { border-left-color: var(--green); background: rgba(24,240,101,.1); }
 .round-team .captain-name { color: var(--accent); }
 .team-roles { display: grid; gap: 5px; }
 .question-preview { margin: 20px 0; padding: 22px; border: 1px solid rgba(114,184,255,.3); border-radius: 14px; background: rgba(114,184,255,.08); }
@@ -68,7 +68,14 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .team-editor { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
 .roster-actions { display: flex; flex-wrap: wrap; gap: 9px; justify-content: flex-end; }
 .team-edit-card { display: grid; gap: 10px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: rgba(8,17,31,.5); }
-.player-fields { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.team-edit-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px; align-items: center; }
+.team-size-control { display: grid; grid-template-columns: 34px auto 34px; align-items: center; gap: 5px; }
+.team-size-control button, .remove-player { min-height: 34px; border: 1px solid var(--line); border-radius: 9px; background: rgba(114,184,255,.08); color: var(--text); cursor: pointer; font-weight: 900; }
+.team-size-control button:disabled, .remove-player:disabled { cursor: not-allowed; opacity: .4; }
+.team-required-count { min-width: 76px; color: var(--accent); font-size: .72rem; text-align: center; text-transform: uppercase; }
+.player-fields { display: grid; gap: 8px; }
+.player-field-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+.remove-player { padding: 0 10px; color: var(--danger); font-size: .7rem; text-transform: uppercase; }
 .points-editor { display: grid; gap: 10px; margin-top: 18px; }
 .point-row { display: grid; grid-template-columns: 1fr 100px 58px; gap: 8px; align-items: center; }
 .point-row button { min-height: 42px; padding: 0 10px; }
@@ -131,6 +138,8 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
   .header-actions { gap: 8px; }
   .header-actions a { display: none; }
   .player-fields { grid-template-columns: 1fr; }
+  .team-edit-heading { grid-template-columns: 1fr; }
+  .team-size-control { justify-content: start; }
   .control-card { padding: 19px 16px; }
   .point-row { grid-template-columns: 1fr 80px 52px; }
 }
