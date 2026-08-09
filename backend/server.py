@@ -407,7 +407,7 @@ def clean_text(value, maximum):
 
 
 class QuizHandler(BaseHTTPRequestHandler):
-    server_version = "GDBGCQuiz/13.0"
+    server_version = "GDBGCQuiz/14.0"
 
     def log_message(self, message, *args):
         print(f"{self.address_string()} - {message % args}", flush=True)
@@ -459,7 +459,7 @@ class QuizHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/health":
-            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 13, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
+            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 14, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
         elif path == "/api/game":
             with LOCK:
                 if expire_timer_if_needed():
@@ -486,9 +486,15 @@ class QuizHandler(BaseHTTPRequestHandler):
                         "usedWagers": team["usedWagers"],
                         "pendingBet": GAME["pendingBets"].get(team["id"]),
                     }
-                    status["teamChat"] = GAME["suggestions"].get(team["id"], [])
+                    team_chat = GAME["suggestions"].get(team["id"], [])
+                    status["teamChat"] = team_chat
                     if is_captain:
                         status["teamAnswer"] = GAME["teamAnswers"].get(team["id"], "")
+                        status["suggestions"] = team_chat
+                    else:
+                        status["ownSuggestions"] = [
+                            message for message in team_chat if message.get("playerIndex") == player_index
+                        ]
                     if GAME["phase"] == "captain_vote" and team in active_teams():
                         votes = GAME["captainVotes"].get(team["id"], {})
                         status["captainVote"] = votes.get(str(player_index))
@@ -527,6 +533,8 @@ class QuizHandler(BaseHTTPRequestHandler):
                         response = self.submit_captain_answer(payload)
                     else:
                         response = self.submit_team_chat_message(payload)
+                        if path == "/api/player/suggestion":
+                            response["suggestion"] = response["message"]
                     save_game()
                     self.send_json(200, response)
                 return

@@ -95,7 +95,12 @@ async function refresh() {
     state.game = game;
     state.player = player;
     updatePlayerLabel();
-    if (!document.activeElement?.matches('input, textarea')) renderGame();
+    if (!document.activeElement?.matches('input, textarea')) {
+      renderGame();
+    } else if (state.activePanel === 'suggestions') {
+      renderCommunicationTabs(game);
+      renderTeamChatMessages(document.querySelector('.team-chat-list'));
+    }
     setConnection('online', 'На живо');
   } catch (error) {
     goOffline(error);
@@ -512,28 +517,9 @@ function renderCaptainAnswer(grid) {
 }
 
 function renderSuggestions(grid) {
-  const messages = state.player.teamChat || [];
   const card = communicationCard('Отборен чат', 'Всички в твоя отбор, включително капитанът, могат да четат и пишат тук.');
   const list = document.createElement('div'); list.className = 'suggestion-list team-chat-list';
-  if (!messages.length) {
-    const empty = document.createElement('p'); empty.className = 'empty-suggestions'; empty.textContent = 'Чатът е празен. Започни разговора.'; list.append(empty);
-  } else {
-    for (const message of messages) {
-      const item = document.createElement('article');
-      item.className = `suggestion-notification${message.playerIndex === state.player.playerIndex ? ' is-mine' : ''}`;
-      const heading = document.createElement('div'); heading.className = 'team-chat-message-heading';
-      const name = document.createElement('strong'); name.textContent = message.name;
-      heading.append(name);
-      if (message.sentAt) {
-        const time = document.createElement('time');
-        time.dateTime = new Date(message.sentAt).toISOString();
-        time.textContent = new Date(message.sentAt).toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' });
-        heading.append(time);
-      }
-      const text = document.createElement('p'); text.textContent = message.text;
-      item.append(heading, text); list.append(item);
-    }
-  }
+  renderTeamChatMessages(list);
 
   const form = document.createElement('form'); form.className = 'communication-form team-chat-form';
   const textarea = document.createElement('textarea'); textarea.maxLength = 300; textarea.rows = 3; textarea.required = true;
@@ -552,6 +538,39 @@ function renderSuggestions(grid) {
   form.append(textarea, button, status);
   card.append(list, form); grid.replaceChildren(card);
   requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
+}
+
+function renderTeamChatMessages(list) {
+  if (!list) return;
+  const messages = state.player?.teamChat || [];
+  const wasNearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 48;
+  const previousLastId = list.lastElementChild?.dataset.messageId;
+  const nextLastId = messages.at(-1)?.id;
+  const signature = `${messages.length}:${nextLastId || 'empty'}`;
+  if (list.dataset.chatSignature === signature) return;
+  list.dataset.chatSignature = signature;
+  list.replaceChildren();
+  if (!messages.length) {
+    const empty = document.createElement('p'); empty.className = 'empty-suggestions'; empty.textContent = 'Чатът е празен. Започни разговора.'; list.append(empty);
+  } else {
+    for (const message of messages) {
+      const item = document.createElement('article');
+      item.className = `suggestion-notification${message.playerIndex === state.player.playerIndex ? ' is-mine' : ''}`;
+      item.dataset.messageId = message.id;
+      const heading = document.createElement('div'); heading.className = 'team-chat-message-heading';
+      const name = document.createElement('strong'); name.textContent = message.name;
+      heading.append(name);
+      if (message.sentAt) {
+        const time = document.createElement('time');
+        time.dateTime = new Date(message.sentAt).toISOString();
+        time.textContent = new Date(message.sentAt).toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' });
+        heading.append(time);
+      }
+      const text = document.createElement('p'); text.textContent = message.text;
+      item.append(heading, text); list.append(item);
+    }
+  }
+  if (wasNearBottom || !previousLastId) requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
 }
 
 function renderCategories(game) {
