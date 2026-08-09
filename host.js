@@ -1,4 +1,4 @@
-const state = { apiBase: '', token: localStorage.getItem('gdbgc-host-token') || '', game: null, timer: null, questionFilter: 'all', activePanel: null, revealedAnswerFor: null, browserQuestionNumber: null, browserAnswerRevealed: false };
+const state = { apiBase: '', token: localStorage.getItem('gdbgc-host-token') || '', game: null, renderedVersion: null, timer: null, questionFilter: 'all', activePanel: null, revealedAnswerFor: null, browserQuestionNumber: null, browserAnswerRevealed: false };
 const element = (id) => document.getElementById(id);
 
 function setConnection(kind, label) {
@@ -67,9 +67,14 @@ async function refresh(forceRender) {
   try {
     const game = await request('/api/host/state');
     const focused = document.activeElement?.matches('input, select, textarea');
-    const changed = !state.game || state.game.version !== game.version;
+    const changed = state.renderedVersion !== game.version;
     state.game = game;
-    if (forceRender || (changed && !focused)) render();
+    if (forceRender || (changed && !focused)) {
+      render();
+    } else if (changed) {
+      refreshSubmittedAnswers(game);
+      updateHostTimerClock();
+    }
     showPanel();
   } catch (error) {
     if (error.status === 401) {
@@ -105,6 +110,7 @@ function activeTeams(game) {
 
 function render() {
   const game = state.game;
+  state.renderedVersion = game.version;
   const pregame = isPregame(game.phase);
   element('host-question-counter').classList.toggle('hidden', pregame);
   if (pregame) {
@@ -409,7 +415,9 @@ function renderScoring(game, controls) {
     const wrap = document.createElement('div');
     const bet = document.createElement('small'); bet.textContent = `Wager: ${team.bet}`;
     const submitted = document.createElement('p'); submitted.className = 'submitted-team-answer';
-    submitted.textContent = game.teamAnswers?.[team.id] || 'No submitted answer';
+    submitted.dataset.teamAnswer = team.id;
+    submitted.setAttribute('aria-live', 'polite');
+    updateSubmittedAnswer(submitted, game.teamAnswers?.[team.id]);
     wrap.append(bet, submitted, select); grid.append(teamCard(team, wrap));
   }
   const score = actionButton('Score question', async () => {
@@ -418,6 +426,18 @@ function renderScoring(game, controls) {
     await post('/api/host/question/score', { results });
   });
   controls.append(help, grid, score);
+}
+
+function updateSubmittedAnswer(element, answer) {
+  const received = Boolean(answer);
+  element.textContent = received ? answer : 'Waiting for captain…';
+  element.classList.toggle('is-received', received);
+}
+
+function refreshSubmittedAnswers(game) {
+  document.querySelectorAll('[data-team-answer]').forEach((answer) => {
+    updateSubmittedAnswer(answer, game.teamAnswers?.[answer.dataset.teamAnswer]);
+  });
 }
 
 function renderResults(game, controls) {
