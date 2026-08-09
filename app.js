@@ -137,7 +137,7 @@ function renderGame() {
   element('category-strip').classList.toggle('hidden', pregame);
   if (pregame) {
     element('category-kicker').textContent = `${game.playerCount} от ${game.playerCapacity} играчи са готови`;
-    element('category-name').textContent = game.gameMode === 'duo' ? 'Тестов режим за двама' : 'Игрално фоайе';
+    element('category-name').textContent = game.gameMode === 'duo' ? 'Двубой за двама' : 'Игрално фоайе';
   } else {
     element('category-kicker').textContent = `${bgCategoryName(game.category.name)} · Въпроси ${game.category.start}–${game.category.end}`;
     element('category-name').textContent = bgCategoryName(game.category.name);
@@ -208,8 +208,8 @@ function renderCommunicationTabs(game) {
   const suggestionsTab = element('suggestions-tab');
   element('captain-answer-tab').classList.toggle('hidden', !captain);
   suggestionsTab.classList.toggle('hidden', !open);
-  element('suggestions-tab-label').textContent = captain ? 'Съвети' : 'Предложи';
-  const count = captain ? (state.player.suggestions || []).length : 0;
+  element('suggestions-tab-label').textContent = 'Отборен чат';
+  const count = (state.player?.teamChat || []).length;
   element('suggestions-count').textContent = count;
   element('suggestions-count').classList.toggle('hidden', !count);
   if ((!open && ['answer', 'suggestions'].includes(state.activePanel)) || (!captain && state.activePanel === 'answer')) {
@@ -444,7 +444,6 @@ function renderTeams(game) {
     const captain = document.createElement('p');
     captain.className = 'captain';
     captain.textContent = team.captain ? `Капитан: ${team.captain.name}` : 'Капитан: очаква избор';
-    if (game.gameMode === 'duo' && team.answerer) captain.textContent += ` · Отговаря: ${team.answerer.name}`;
 
     const players = document.createElement('div');
     players.className = 'player-chips';
@@ -513,44 +512,46 @@ function renderCaptainAnswer(grid) {
 }
 
 function renderSuggestions(grid) {
-  if (state.player.isCaptain) {
-    const suggestions = state.player.suggestions || [];
-    const card = communicationCard('Съвети от отбора', 'Тези известия са лични за капитана на твоя отбор.');
-    const list = document.createElement('div'); list.className = 'suggestion-list';
-    if (!suggestions.length) {
-      const empty = document.createElement('p'); empty.className = 'empty-suggestions'; empty.textContent = 'Все още няма предложения.'; list.append(empty);
-    } else {
-      for (const suggestion of [...suggestions].reverse()) {
-        const item = document.createElement('article'); item.className = 'suggestion-notification';
-        const name = document.createElement('strong'); name.textContent = suggestion.name;
-        const text = document.createElement('p'); text.textContent = suggestion.text;
-        item.append(name, text); list.append(item);
+  const messages = state.player.teamChat || [];
+  const card = communicationCard('Отборен чат', 'Всички в твоя отбор, включително капитанът, могат да четат и пишат тук.');
+  const list = document.createElement('div'); list.className = 'suggestion-list team-chat-list';
+  if (!messages.length) {
+    const empty = document.createElement('p'); empty.className = 'empty-suggestions'; empty.textContent = 'Чатът е празен. Започни разговора.'; list.append(empty);
+  } else {
+    for (const message of messages) {
+      const item = document.createElement('article');
+      item.className = `suggestion-notification${message.playerIndex === state.player.playerIndex ? ' is-mine' : ''}`;
+      const heading = document.createElement('div'); heading.className = 'team-chat-message-heading';
+      const name = document.createElement('strong'); name.textContent = message.name;
+      heading.append(name);
+      if (message.sentAt) {
+        const time = document.createElement('time');
+        time.dateTime = new Date(message.sentAt).toISOString();
+        time.textContent = new Date(message.sentAt).toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' });
+        heading.append(time);
       }
+      const text = document.createElement('p'); text.textContent = message.text;
+      item.append(heading, text); list.append(item);
     }
-    card.append(list); grid.replaceChildren(card); return;
   }
 
-  const card = communicationCard('Предложи отговор', 'Предложението се изпраща само до капитана на твоя отбор.');
-  const form = document.createElement('form'); form.className = 'communication-form';
+  const form = document.createElement('form'); form.className = 'communication-form team-chat-form';
   const textarea = document.createElement('textarea'); textarea.maxLength = 300; textarea.rows = 3; textarea.required = true;
-  textarea.placeholder = 'Напиши идея или възможен отговор…'; textarea.setAttribute('aria-label', 'Предложение към капитана');
-  const button = document.createElement('button'); button.className = 'button button-primary'; button.type = 'submit'; button.textContent = 'Изпрати предложение';
+  textarea.placeholder = 'Напиши съобщение до отбора…'; textarea.setAttribute('aria-label', 'Съобщение до отбора');
+  const button = document.createElement('button'); button.className = 'button button-primary'; button.type = 'submit'; button.textContent = 'Изпрати';
   const status = document.createElement('p'); status.className = 'communication-status';
   form.addEventListener('submit', async (event) => {
     event.preventDefault(); button.disabled = true;
     try {
-      const response = await request('/api/player/suggestion', { method: 'POST', body: JSON.stringify({ suggestion: textarea.value }) }, true);
-      state.player.ownSuggestions = [...(state.player.ownSuggestions || []), response.suggestion];
-      textarea.value = ''; status.textContent = 'Предложението е изпратено до капитана.'; status.classList.remove('error');
+      const response = await request('/api/player/chat', { method: 'POST', body: JSON.stringify({ message: textarea.value }) }, true);
+      state.player.teamChat = [...(state.player.teamChat || []), response.message];
+      renderSuggestions(grid);
     } catch (error) { status.textContent = error.message; status.classList.add('error'); }
     finally { button.disabled = false; }
   });
   form.append(textarea, button, status);
-  const sent = document.createElement('div'); sent.className = 'own-suggestions';
-  for (const suggestion of [...(state.player.ownSuggestions || [])].reverse()) {
-    const item = document.createElement('p'); item.textContent = suggestion.text; sent.append(item);
-  }
-  card.append(form, sent); grid.replaceChildren(card);
+  card.append(list, form); grid.replaceChildren(card);
+  requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
 }
 
 function renderCategories(game) {

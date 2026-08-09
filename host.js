@@ -109,7 +109,7 @@ function render() {
   element('host-question-counter').classList.toggle('hidden', pregame);
   if (pregame) {
     element('host-kicker').textContent = `${game.playerCount} of ${game.playerCapacity} players joined`;
-    element('host-title').textContent = game.gameMode === 'duo' ? 'Two-player practice lobby' : 'Game lobby';
+    element('host-title').textContent = game.gameMode === 'duo' ? 'Two-player head-to-head lobby' : 'Game lobby';
   } else {
     element('host-kicker').textContent = `${game.category.name} · Questions ${game.category.start}–${game.category.end}`;
     element('host-title').textContent = game.phase === 'finished' ? 'Final standings' : game.category.name;
@@ -121,11 +121,11 @@ function render() {
   };
   element('phase-badge').textContent = phaseNames[game.phase] || game.phase;
   const modeButton = element('game-mode-button');
-  modeButton.textContent = game.gameMode === 'duo' ? 'Use 16-player mode' : 'Enable 2-player practice';
+  modeButton.textContent = game.gameMode === 'duo' ? 'Use team mode' : 'Enable 2-player head-to-head';
   modeButton.disabled = game.phase !== 'lobby' || (game.gameMode !== 'duo' && game.playerCount > 2);
   modeButton.title = game.phase !== 'lobby' ? 'Reset or return to the lobby to change modes' : modeButton.disabled ? 'Remove players until no more than two remain' : '';
-  element('roster-title').textContent = game.gameMode === 'duo' ? 'One captain and one answerer' : 'Four teams of four';
-  element('roster-count').textContent = game.gameMode === 'duo' ? `${game.playerCount}/2 practice seats filled. Both players use ${game.teams[0].name}.` : `${game.playerCount}/16 seats filled. New players are distributed automatically across the teams.`;
+  element('roster-title').textContent = game.gameMode === 'duo' ? 'Two players on two teams' : 'Up to four teams of four';
+  element('roster-count').textContent = game.gameMode === 'duo' ? `${game.playerCount}/2 seats filled. Each player has a separate team.` : `${game.playerCount}/16 seats filled. The quiz can start before all seats are filled.`;
   renderRound(game);
   renderTeams(game);
   renderPoints(game);
@@ -231,9 +231,6 @@ function renderRound(game) {
     const roles = document.createElement('div'); roles.className = 'team-roles';
     const captain = document.createElement('span'); captain.className = 'captain-name'; captain.textContent = `Captain: ${team.captain?.name || 'Not selected yet'}`;
     roles.append(captain);
-    if (game.gameMode === 'duo') {
-      const answerer = document.createElement('small'); answerer.textContent = `Answerer: ${team.answerer?.name || 'Not selected yet'}`; roles.append(answerer);
-    }
     return teamCard(team, roles);
   }));
   controls.append(captainGrid);
@@ -256,15 +253,15 @@ function renderLobby(game, controls) {
   copy.textContent = 'Players join from the public screen. Before the real quiz, run the required one-player, one-question system test.';
   const status = document.createElement('div');
   status.className = 'lobby-status';
-  status.innerHTML = `<strong>${game.playerCount}/${game.playerCapacity} players</strong><span>${game.gameMode === 'duo' ? 'Two-player practice mode' : 'Full 16-player mode'}</span><span>${game.testCompleted ? '✓ System test completed' : 'System test not run yet'}</span>`;
+  status.innerHTML = `<strong>${game.playerCount}/${game.playerCapacity} players</strong><span>${game.gameMode === 'duo' ? 'Two-player head-to-head' : 'Team mode · early start allowed'}</span><span>${game.testCompleted ? '✓ System test completed' : 'System test not run yet'}</span>`;
   const actions = document.createElement('div');
   actions.className = 'control-actions';
   const testButton = actionButton('Run one-player system test', () => post('/api/host/test/start', {}));
   testButton.disabled = game.playerCount < 1;
   actions.append(testButton);
   if (game.testCompleted) {
-    const startButton = actionButton(game.gameMode === 'duo' ? 'Start practice captain vote' : 'Start captain vote', () => post('/api/host/game/start', {}));
-    startButton.disabled = game.playerCount !== game.playerCapacity;
+    const startButton = actionButton(game.gameMode === 'duo' ? 'Start head-to-head match' : 'Start captain vote', () => post('/api/host/game/start', {}));
+    startButton.disabled = game.gameMode === 'duo' ? game.playerCount !== 2 : game.playerCount < 1;
     actions.append(startButton);
   }
   controls.append(copy, status, actions);
@@ -301,15 +298,15 @@ function renderTestResult(game, controls) {
     actionButton('Return to lobby', () => post('/api/host/test/reset', {}), 'button-secondary')
   );
   const startButton = actionButton('Start the real quiz', () => post('/api/host/game/start', {}));
-  startButton.textContent = game.gameMode === 'duo' ? 'Start practice captain vote' : 'Start captain vote';
-  startButton.disabled = game.playerCount !== game.playerCapacity;
+  startButton.textContent = game.gameMode === 'duo' ? 'Start head-to-head match' : 'Start captain vote';
+  startButton.disabled = game.gameMode === 'duo' ? game.playerCount !== 2 : game.playerCount < 1;
   actions.append(startButton);
   controls.append(testPreview(game.test), result, actions);
 }
 
 function renderBetting(game, controls) {
   const help = document.createElement('p'); help.className = 'helper';
-  help.textContent = game.gameMode === 'duo' ? 'The captain chooses one unused number. Reveal the question after that wager arrives.' : 'Each captain chooses an unused number from their private panel. Reveal the question after all four wagers arrive.';
+  help.textContent = game.gameMode === 'duo' ? 'Each player chooses an unused number for their own team. Reveal the question after both wagers arrive.' : 'Each participating team captain chooses an unused number. Reveal the question after every active team submits.';
   const grid = document.createElement('div'); grid.className = 'wager-grid';
   for (const team of activeTeams(game)) {
     const wrapper = document.createElement('div');

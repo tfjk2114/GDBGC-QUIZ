@@ -224,18 +224,13 @@ def player_capacity():
 
 
 def active_teams():
-    return GAME["teams"][:1] if game_mode() == "duo" else GAME["teams"]
+    if game_mode() == "duo":
+        return GAME["teams"][:2]
+    participating = [team for team in GAME["teams"] if any(team["players"])]
+    return participating
 
 
 def answerer_for(team):
-    if game_mode() != "duo" or team["id"] != GAME["teams"][0]["id"]:
-        return None
-    captain_index = GAME["captains"].get(team["id"])
-    if not isinstance(captain_index, int):
-        return None
-    for player_index, player in enumerate(team["players"]):
-        if player and player_index != captain_index:
-            return {"playerIndex": player_index, "name": player}
     return None
 
 
@@ -243,7 +238,7 @@ def eligible_captain_indices(team):
     filled = [index for index, player in enumerate(team["players"]) if player]
     recent = GAME.get("captainHistory", {}).get(team["id"], [])[-1:]
     eligible = [index for index in filled if index not in recent]
-    return eligible
+    return eligible or filled
 
 
 def captain_vote_progress(team):
@@ -491,14 +486,9 @@ class QuizHandler(BaseHTTPRequestHandler):
                         "usedWagers": team["usedWagers"],
                         "pendingBet": GAME["pendingBets"].get(team["id"]),
                     }
+                    status["teamChat"] = GAME["suggestions"].get(team["id"], [])
                     if is_captain:
                         status["teamAnswer"] = GAME["teamAnswers"].get(team["id"], "")
-                        status["suggestions"] = GAME["suggestions"].get(team["id"], [])
-                    else:
-                        status["ownSuggestions"] = [
-                            suggestion for suggestion in GAME["suggestions"].get(team["id"], [])
-                            if suggestion.get("playerIndex") == player_index
-                        ]
                     if GAME["phase"] == "captain_vote" and team in active_teams():
                         votes = GAME["captainVotes"].get(team["id"], {})
                         status["captainVote"] = votes.get(str(player_index))
@@ -523,7 +513,7 @@ class QuizHandler(BaseHTTPRequestHandler):
             with LOCK:
                 if expire_timer_if_needed():
                     save_game()
-            if path in {"/api/players/join", "/api/players/leave", "/api/player/captain-vote", "/api/captain/wager", "/api/captain/answer", "/api/player/suggestion"}:
+            if path in {"/api/players/join", "/api/players/leave", "/api/player/captain-vote", "/api/captain/wager", "/api/captain/answer", "/api/player/chat", "/api/player/suggestion"}:
                 with LOCK:
                     if path == "/api/players/join":
                         response = self.join_player(payload)
@@ -536,7 +526,7 @@ class QuizHandler(BaseHTTPRequestHandler):
                     elif path == "/api/captain/answer":
                         response = self.submit_captain_answer(payload)
                     else:
-                        response = self.submit_player_suggestion(payload)
+                        response = self.submit_team_chat_message(payload)
                     save_game()
                     self.send_json(200, response)
                 return
@@ -592,9 +582,9 @@ class QuizHandler(BaseHTTPRequestHandler):
         if player_count() >= capacity:
             raise ValueError(f"Всички {capacity} места вече са заети")
         if game_mode() == "duo":
-            team = GAME["teams"][0]
-            player_index = next(index for index, player in enumerate(team["players"][:2]) if not player)
-            team_index = 0
+            team_index = next(index for index, team in enumerate(GAME["teams"][:2]) if not team["players"][0])
+            team = GAME["teams"][team_index]
+            player_index = 0
         else:
             available = []
             for team_index, team in enumerate(GAME["teams"]):
@@ -681,9 +671,9 @@ class QuizHandler(BaseHTTPRequestHandler):
         GAME["teamAnswers"][team["id"]] = answer
         return {"answer": answer}
 
-    def submit_player_suggestion(self, payload):
+    def submit_team_chat_message(self, payload):
         if GAME["phase"] != "question":
-            raise ValueError("Предложения се изпращат само докато въпросът е отворен")
+            raise ValueError("Отборният чат е достъпен само докато въпросът е отворен")
         identity = find_player_by_token(self.player_token())
         if not identity:
             raise ValueError("Сесията на играча не е валидна")
@@ -691,18 +681,17 @@ class QuizHandler(BaseHTTPRequestHandler):
         team = GAME["teams"][team_index]
         if team not in active_teams():
             raise ValueError("Отборът не участва в този режим")
-        if GAME["captains"].get(team["id"]) == player_index:
-            raise ValueError("Капитанът изпраща официалния отговор от менюто Отговор")
         suggestion = {
             "id": secrets.token_hex(8),
             "name": team["players"][player_index],
             "playerIndex": player_index,
-            "text": clean_text(payload.get("suggestion"), 300),
+            "text": clean_text(payload.get("message", payload.get("suggestion")), 300),
+            "sentAt": round(time.time() * 1000),
         }
         team_suggestions = GAME["suggestions"].setdefault(team["id"], [])
         team_suggestions.append(suggestion)
-        del team_suggestions[:-40]
-        return {"suggestion": suggestion}
+        del team_suggestions[:-100]
+        return {"message": suggestion}
 
     def update_teams(self, payload):
         teams = payload.get("teams")
@@ -716,7 +705,7 @@ class QuizHandler(BaseHTTPRequestHandler):
                 if clean_label(player, "", 28)
             )
             if submitted_count > 2:
-                raise ValueError("Two-player practice mode allows exactly two player seats")
+                raise ValueError("Two-player head-to-head mode allows exactly two player seats")
         for index, submitted in enumerate(teams):
             players = submitted.get("players")
             if not isinstance(players, list) or len(players) != 4:
@@ -749,8 +738,8 @@ class QuizHandler(BaseHTTPRequestHandler):
             team["players"] = ["", "", "", ""]
             team["playerTokens"] = ["", "", "", ""]
         for index, (player, token) in enumerate(players):
-            team = GAME["teams"][0] if game_mode() == "duo" else GAME["teams"][index % 4]
-            seat = index if game_mode() == "duo" else index // 4
+            team = GAME["teams"][index] if game_mode() == "duo" else GAME["teams"][index % 4]
+            seat = 0 if game_mode() == "duo" else index // 4
             team["players"][seat] = player
             team["playerTokens"][seat] = token
 
@@ -767,14 +756,14 @@ class QuizHandler(BaseHTTPRequestHandler):
             if player
         ]
         if mode == "duo" and len(players) > 2:
-            raise ValueError("Two-player practice mode supports at most two joined players")
+            raise ValueError("Two-player head-to-head mode supports at most two joined players")
         if mode == "duo":
             for team in GAME["teams"]:
                 team["players"] = ["", "", "", ""]
                 team["playerTokens"] = ["", "", "", ""]
-            for player_index, (player, token) in enumerate(players):
-                GAME["teams"][0]["players"][player_index] = player
-                GAME["teams"][0]["playerTokens"][player_index] = token
+            for team_index, (player, token) in enumerate(players):
+                GAME["teams"][team_index]["players"][0] = player
+                GAME["teams"][team_index]["playerTokens"][0] = token
         GAME["gameMode"] = mode
         GAME["captains"] = {}
         GAME["captainVotes"] = {}
@@ -829,9 +818,10 @@ class QuizHandler(BaseHTTPRequestHandler):
             raise ValueError("The game cannot start right now")
         if not GAME["testCompleted"]:
             raise ValueError("Complete the system test first")
-        capacity = player_capacity()
-        if player_count() != capacity:
-            raise ValueError(f"All {capacity} players must join")
+        if game_mode() == "duo" and player_count() != 2:
+            raise ValueError("Exactly two players must join the head-to-head mode")
+        if game_mode() == "full" and player_count() < 1:
+            raise ValueError("At least one player must join")
         GAME["captains"] = {}
         GAME["captainVotes"] = {}
         GAME["test"] = None
@@ -841,7 +831,11 @@ class QuizHandler(BaseHTTPRequestHandler):
         GAME["teamAnswers"] = {}
         GAME["suggestions"] = {}
         clear_running_timer()
-        GAME["phase"] = "captain_vote"
+        if game_mode() == "duo":
+            GAME["captains"] = {team["id"]: 0 for team in active_teams()}
+            GAME["phase"] = "betting"
+        else:
+            GAME["phase"] = "captain_vote"
 
     def start_category(self):
         if GAME["phase"] not in {"category_start", "setup"}:
@@ -854,7 +848,11 @@ class QuizHandler(BaseHTTPRequestHandler):
         GAME["teamAnswers"] = {}
         GAME["suggestions"] = {}
         clear_running_timer()
-        GAME["phase"] = "captain_vote"
+        if game_mode() == "duo":
+            GAME["captains"] = {team["id"]: 0 for team in active_teams()}
+            GAME["phase"] = "betting"
+        else:
+            GAME["phase"] = "captain_vote"
 
     def reveal_question(self, payload):
         if GAME["phase"] != "betting":
@@ -917,7 +915,11 @@ class QuizHandler(BaseHTTPRequestHandler):
         elif GAME["currentQuestionIndex"] % 10 == 0:
             GAME["captains"] = {}
             GAME["captainVotes"] = {}
-            GAME["phase"] = "captain_vote"
+            if game_mode() == "duo":
+                GAME["captains"] = {team["id"]: 0 for team in active_teams()}
+                GAME["phase"] = "betting"
+            else:
+                GAME["phase"] = "captain_vote"
         else:
             GAME["phase"] = "betting"
 

@@ -169,6 +169,12 @@ h2 { font-size: clamp(1.7rem, 4vw, 2.8rem); }
 .suggestion-notification strong { color: var(--blue); font-size: .8rem; }
 .suggestion-notification p, .own-suggestions p { margin: 5px 0 0; line-height: 1.45; }
 .own-suggestions p { padding: 10px 12px; border-left: 3px solid var(--line); background: rgba(101,199,255,.05); color: var(--muted); }
+.team-chat-list { max-height: min(42vh, 360px); overflow-y: auto; padding-right: 4px; scroll-behavior: smooth; }
+.suggestion-notification.is-mine { margin-left: clamp(18px, 8vw, 72px); border-left-color: var(--accent); background: rgba(66,232,255,.12); }
+.team-chat-message-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.team-chat-message-heading time { color: var(--muted); font-size: .72rem; white-space: nowrap; }
+.team-chat-form { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.team-chat-form textarea { min-height: 82px; text-transform: none; }
 .info-card { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; padding: 18px; border-left: 4px solid var(--team-color); }
 .info-card strong { font-size: .95rem; }
 .info-card b { color: var(--team-color); text-align: right; }
