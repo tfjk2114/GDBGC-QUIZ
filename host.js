@@ -228,7 +228,9 @@ function renderRound(game) {
       const note = document.createElement('small'); note.textContent = team.captainVoteCount === team.captainVoteRequired ? 'Voting complete' : 'Waiting for team members';
       progress.append(count, note); return teamCard(team, progress);
     }));
-    controls.append(help, grid);
+    const startAnyway = actionButton('Start round anyway', () => post('/api/host/captain-vote/finish', {}));
+    startAnyway.title = 'Submitted votes count; teams with no votes receive a valid captain automatically.';
+    controls.append(help, grid, startAnyway);
     return;
   }
 

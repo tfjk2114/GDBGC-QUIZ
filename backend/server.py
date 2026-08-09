@@ -268,18 +268,25 @@ def captain_vote_progress(team):
     return sum(str(index) in votes for index in filled), len(filled)
 
 
-def finalize_captain_vote_if_ready():
-    for team in active_teams():
-        submitted, required = captain_vote_progress(team)
-        if submitted != required:
-            return False
+def finalize_captain_vote_if_ready(force=False):
+    if not force:
+        for team in active_teams():
+            submitted, required = captain_vote_progress(team)
+            if submitted != required:
+                return False
     captains = {}
     history = GAME.setdefault("captainHistory", {})
     for team in active_teams():
-        choices = list(GAME["captainVotes"][team["id"]].values())
-        counts = {candidate: choices.count(candidate) for candidate in set(choices)}
-        highest = max(counts.values())
-        captain = random.choice([candidate for candidate, count in counts.items() if count == highest])
+        choices = list(GAME.get("captainVotes", {}).get(team["id"], {}).values())
+        if choices:
+            counts = {candidate: choices.count(candidate) for candidate in set(choices)}
+            highest = max(counts.values())
+            captain = random.choice([candidate for candidate, count in counts.items() if count == highest])
+        else:
+            eligible = eligible_captain_indices(team)
+            if not eligible:
+                raise ValueError(f"{team['name']} has no eligible captain")
+            captain = random.choice(eligible)
         captains[team["id"]] = captain
         history[team["id"]] = (history.get(team["id"], []) + [captain])[-2:]
     GAME["captains"] = captains
@@ -461,7 +468,7 @@ def clean_text(value, maximum):
 
 
 class QuizHandler(BaseHTTPRequestHandler):
-    server_version = "GDBGCQuiz/17.0"
+    server_version = "GDBGCQuiz/18.0"
 
     def log_message(self, message, *args):
         print(f"{self.address_string()} - {message % args}", flush=True)
@@ -513,7 +520,7 @@ class QuizHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/health":
-            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 17, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
+            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 18, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
         elif path == "/api/game":
             with LOCK:
                 if expire_timer_if_needed():
@@ -618,6 +625,8 @@ class QuizHandler(BaseHTTPRequestHandler):
                     self.reset_test()
                 elif path == "/api/host/game/start":
                     self.start_game()
+                elif path == "/api/host/captain-vote/finish":
+                    self.finish_captain_vote()
                 elif path == "/api/host/category/start":
                     self.start_category()
                 elif path == "/api/host/question/reveal":
@@ -1059,6 +1068,11 @@ class QuizHandler(BaseHTTPRequestHandler):
             GAME["phase"] = "betting"
         else:
             GAME["phase"] = "captain_vote"
+
+    def finish_captain_vote(self):
+        if GAME["phase"] != "captain_vote":
+            raise ValueError("There is no captain vote to finish")
+        finalize_captain_vote_if_ready(force=True)
 
     def reveal_question(self, payload):
         if GAME["phase"] != "betting":
