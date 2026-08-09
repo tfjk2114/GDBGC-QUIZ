@@ -218,8 +218,8 @@ function renderRound(game) {
   if (game.phase === 'captain_vote') {
     const help = document.createElement('p'); help.className = 'helper';
     help.textContent = game.gameMode === 'duo'
-      ? 'Both players vote. The captain from the previous category is ineligible; self-votes are allowed.'
-      : 'Every player votes inside their team. Only the captain from the previous category is ineligible; self-votes are allowed.';
+      ? 'Each player remains captain of their own team in head-to-head mode.'
+      : 'Every player votes inside their team. The two most recent captains are ineligible when team size permits; self-votes are allowed.';
     const grid = document.createElement('div'); grid.className = 'captain-grid';
     grid.replaceChildren(...activeTeams(game).map((team) => {
       const progress = document.createElement('div'); progress.className = 'team-roles';

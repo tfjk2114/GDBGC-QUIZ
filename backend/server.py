@@ -244,9 +244,15 @@ def answerer_for(team):
 
 def eligible_captain_indices(team):
     filled = connected_player_indices(team)
-    recent = GAME.get("captainHistory", {}).get(team["id"], [])[-1:]
-    eligible = [index for index in filled if index not in recent]
-    return eligible or filled
+    history = GAME.get("captainHistory", {}).get(team["id"], [])
+    recent_distinct = []
+    for player_index in reversed(history):
+        if player_index in filled and player_index not in recent_distinct:
+            recent_distinct.append(player_index)
+        if len(recent_distinct) == 2:
+            break
+    blocked = set(recent_distinct[:max(0, min(2, len(filled) - 1))])
+    return [index for index in filled if index not in blocked]
 
 
 def captain_vote_progress(team):
@@ -268,7 +274,7 @@ def finalize_captain_vote_if_ready():
         highest = max(counts.values())
         captain = random.choice([candidate for candidate, count in counts.items() if count == highest])
         captains[team["id"]] = captain
-        history[team["id"]] = (history.get(team["id"], []) + [captain])[-1:]
+        history[team["id"]] = (history.get(team["id"], []) + [captain])[-2:]
     GAME["captains"] = captains
     GAME["captainVotes"] = {}
     GAME["phase"] = "betting"
@@ -427,7 +433,7 @@ def clean_text(value, maximum):
 
 
 class QuizHandler(BaseHTTPRequestHandler):
-    server_version = "GDBGCQuiz/15.0"
+    server_version = "GDBGCQuiz/16.0"
 
     def log_message(self, message, *args):
         print(f"{self.address_string()} - {message % args}", flush=True)
@@ -479,7 +485,7 @@ class QuizHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/health":
-            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 15, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
+            self.send_json(200, {"ok": True, "service": "gdbgc-quiz", "version": 16, "uptimeSeconds": round(time.monotonic() - STARTED_AT)})
         elif path == "/api/game":
             with LOCK:
                 if expire_timer_if_needed():
@@ -705,7 +711,7 @@ class QuizHandler(BaseHTTPRequestHandler):
             raise ValueError("Отборът не участва в този режим")
         candidate = payload.get("playerIndex")
         if isinstance(candidate, bool) or not isinstance(candidate, int) or candidate not in eligible_captain_indices(team):
-            raise ValueError("Избери играч, който не е бил капитан в предишната категория")
+            raise ValueError("Избери играч, който не е бил сред последните двама капитани")
         GAME["captainVotes"].setdefault(team["id"], {})[str(player_index)] = candidate
         finalized = finalize_captain_vote_if_ready()
         return {"vote": candidate, "finalized": finalized, "game": public_game()}
